@@ -1,0 +1,11 @@
+[package]
+authors = ["semenInRussia"]
+name = "org-roam-explorer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies.org_roam_fetch]
+path = "src/org_roam_fetch"
+
+[dependencies]
+tokio = { version = "0.2", features = ["rt-threaded", "macros"] }

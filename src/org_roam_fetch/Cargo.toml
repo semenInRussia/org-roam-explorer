@@ -1,0 +1,13 @@
+[package]
+authors = ["semenInRussia"]
+name = "org_roam_fetch"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "org_roam_fetch"
+path = "lib.rs"
+
+[dependencies]
+dotenvy = "0.15"
+quaint = {version = "0.1.13", features = ["pooled", "sqlite"]}
