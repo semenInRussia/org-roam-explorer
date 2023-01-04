@@ -96,17 +96,15 @@ mod tests {
 
     #[tokio::test]
     async fn node_title() {
-        let node = Node::by_id("0decd9d4-4029-4c96-9a5a-75f4f449a4fd").await
+        let node = Node::by_id("1").await
             .expect("Node with available id not found");
-        assert_eq!(node.title(), "Cross SQL Joining");
+        assert_eq!(node.title(), "momentum");
     }
 
     #[tokio::test]
     async fn node_filename() {
-        let node = Node::by_id("0decd9d4-4029-4c96-9a5a-75f4f449a4fd").await
+        let node = Node::by_id("1").await
             .expect("Node with available id not found");
-        assert_eq!(
-            node.filename(),
-            "c:/Users/hrams/AppData/Roaming/org-roam/20221030190542-sql.org");
+        assert_eq!(node.filename(), "org-roam/momentum.org");
     }
 }
