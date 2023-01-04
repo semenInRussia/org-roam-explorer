@@ -1,8 +1,12 @@
+#[derive(Debug)]
 pub enum Error {
+    /// Error from `quaint`
     DBError(quaint::error::Error),
+    /// Error when `Node` isn't found in DB
+    NodeNotFound
 }
 
-pub type Result<T> = std::result::Result<Error, T>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 impl From<quaint::error::Error> for Error {
     fn from(value: quaint::error::Error) -> Self {

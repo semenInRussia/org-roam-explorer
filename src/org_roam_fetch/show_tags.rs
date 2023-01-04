@@ -1,5 +1,6 @@
 use crate::connection::db_connection;
-use quaint::{prelude::*, Result};
+use crate::result::Result;
+use quaint::prelude::*;
 
 pub async fn nodes_and_tags () -> Result<Vec<(String, String)>> {
     let conn = db_connection().await?;
