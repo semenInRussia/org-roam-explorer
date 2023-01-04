@@ -1,14 +1,17 @@
-use quaint::prelude::*;
-use crate::result::{Result, Error};
+use std::fs::File;
+
 use crate::connection::db_connection;
+use crate::result::{Error, Result};
+use crate::tag::Tag;
+use crate::utils::add_quotes_around;
+use quaint::prelude::*;
 
 // NOTE: I am not use columns from the table Node which for me useless
 #[derive(Debug)]
 pub struct Node {
-    pub id: Option<String>,
-    pub title: Option<String>,
-    pub tags: Option<Vec<String>>,
-    pub filename: Option<String>,
+    id: Option<String>,
+    title: Option<String>,
+    filename: Option<String>,
 }
 
 impl From<ResultRow> for Node {
@@ -19,18 +22,14 @@ impl From<ResultRow> for Node {
         Node {
             id,
             title,
-            tags: None,
             filename,
         }
     }
 }
 
 impl Node {
-    pub async fn by_id (id_str: &str) -> Result<Self> {
-        let mut id = String::new();
-        id.push('"');
-        id.push_str(id_str);
-        id.push('"');
+    pub async fn by_id(id: &str) -> Result<Self> {
+        let id = add_quotes_around(id);
         let query = Select::from_table("nodes")
             .columns(["id", "title", "file"])
             .and_where(Column::new("id").equals(id));
@@ -44,7 +43,7 @@ impl Node {
             .ok_or(Error::NodeNotFound)
     }
 
-    pub async fn tags (&self) -> Result<Vec<String>> {
+    pub async fn tags(&self) -> Result<Vec<Tag>> {
         let id = self.id.clone().expect("id of the `Node` isn't exists");
         let query = Select::from_table("tags")
             .column("tag")
@@ -54,14 +53,28 @@ impl Node {
             .select(query)
             .await?
             .into_iter()
-            .map(|row| row[0].clone().into_string()
-                 .expect("In `tags.node_id` column not string"))
+            .map(Tag::from)
             .collect();
         Ok(tags)
     }
+
+    pub fn title(&self) -> String {
+        self.title.clone().unwrap()
+    }
+
+    pub fn filename(&self) -> String {
+        self.filename
+            .clone()
+            .expect("File of a `Node` isn't given in structure")
+    }
+
+    pub fn file(&self) -> Result<File> {
+        let filename = self.filename();
+        File::open(filename).map_err(Error::NodeFileOpenError)
+    }
 }
 
-pub async fn all_nodes () -> Result<Vec<Node>> {
+pub async fn all_nodes() -> Result<Vec<Node>> {
     let query = Select::from_table("nodes").columns(["file", "title", "id"]);
     let nodes = db_connection()
         .await?

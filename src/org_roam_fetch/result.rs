@@ -1,11 +1,13 @@
 #[derive(Debug)]
 pub enum Error {
-    /// Error from `quaint`
+    /// an error with database
     DBError(quaint::error::Error),
-    /// Error when `Node` isn't found in DB
+    /// a node (`Node`) isn't found in database
     NodeNotFound,
+    /// open a file of a node (`Node`) isn't work
+    NodeFileOpenError(std::io::Error),
     /// Error when `Tag` isn't found in DB
-    TagNotFound
+    TagNotFound,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -2,6 +2,7 @@ use quaint::{connector::ResultRow, prelude::*};
 
 use crate::connection::db_connection;
 use crate::result::{Error, Result};
+use crate::utils::{remove_quotes_around, add_quotes_around};
 
 #[derive(Debug)]
 pub struct Tag {
@@ -10,23 +11,17 @@ pub struct Tag {
 
 impl From<ResultRow> for Tag {
     fn from(row: ResultRow) -> Self {
-        let mut name = row["tag"]
+        row["tag"]
             .clone()
             .into_string()
-            .expect("A given row of the table `tags` hasn't column `tag`");
-        // remove quotes around
-        name.remove(0);
-        name.pop();
-        Tag { name }
+            .map(Tag::new)
+            .expect("A given row of the table `tags` hasn't column `tag`")
     }
 }
 
 impl Tag {
-    pub async fn by_name (name_str: &str) -> Result<Self> {
-        let mut name = String::new();
-        name.push('"');
-        name.push_str(name_str);
-        name.push('"');
+    pub async fn by_name (name: &str) -> Result<Self> {
+        let name = add_quotes_around(name);
         let query = Select::from_table("tags")
             .column("tag")
             .and_where(Column::new("tag").equals(name));
@@ -38,5 +33,13 @@ impl Tag {
             .nth(0)
             .map(Tag::from)
             .ok_or(Error::TagNotFound)
+    }
+
+    pub fn name (&self) -> String {
+        remove_quotes_around(self.name.clone())
+    }
+
+    pub fn new<T> (name: T) -> Self where T: Into<String> {
+        Tag { name: name.into() }
     }
 }
