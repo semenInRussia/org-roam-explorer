@@ -1,15 +1,10 @@
 [package]
 authors = ["semenInRussia"]
-name = "org-roam-explorer"
+name = "org_roam_fetch"
 version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-path = "crates/main.rs"
-name = "main"
-
-[dependencies.org_roam_fetch]
-path = "crates/org_roam_fetch"
-
 [dependencies]
 tokio = { version = "0.2", features = ["rt-threaded", "macros"] }
+quaint = {version = "0.1.13", features = ["pooled", "sqlite"]}
+dotenvy = "0.15"

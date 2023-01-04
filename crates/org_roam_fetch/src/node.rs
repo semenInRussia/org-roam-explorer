@@ -3,7 +3,7 @@ use std::fs::File;
 use crate::connection::db_connection;
 use crate::result::{Error, Result};
 use crate::tag::Tag;
-use crate::utils::add_quotes_around;
+use crate::utils::{add_quotes_around, remove_quotes_around};
 use quaint::prelude::*;
 
 // NOTE: I am not use columns from the table Node which for me useless
@@ -59,13 +59,17 @@ impl Node {
     }
 
     pub fn title(&self) -> String {
-        self.title.clone().unwrap()
+        self.title
+            .clone()
+            .map(remove_quotes_around)
+            .expect("File of a `Node` isn't given in the instance")
     }
 
     pub fn filename(&self) -> String {
         self.filename
             .clone()
-            .expect("File of a `Node` isn't given in structure")
+            .map(remove_quotes_around)
+            .expect("File of a `Node` isn't given in the instance")
     }
 
     pub fn file(&self) -> Result<File> {
@@ -84,4 +88,25 @@ pub async fn all_nodes() -> Result<Vec<Node>> {
         .map(Node::from)
         .collect();
     Ok(nodes)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::node::Node;
+
+    #[tokio::test]
+    async fn node_title() {
+        let node = Node::by_id("0decd9d4-4029-4c96-9a5a-75f4f449a4fd").await
+            .expect("Node with available id not found");
+        assert_eq!(node.title(), "Cross SQL Joining");
+    }
+
+    #[tokio::test]
+    async fn node_filename() {
+        let node = Node::by_id("0decd9d4-4029-4c96-9a5a-75f4f449a4fd").await
+            .expect("Node with available id not found");
+        assert_eq!(
+            node.filename(),
+            "c:/Users/hrams/AppData/Roaming/org-roam/20221030190542-sql.org");
+    }
 }
