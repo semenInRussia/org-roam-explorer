@@ -5,10 +5,10 @@ use crate::connection::db_connection;
 // NOTE: I am not use columns from the table Node which for me useless
 #[derive(Debug)]
 pub struct Node {
-    id: Option<String>,
-    title: Option<String>,
-    tags: Option<Vec<String>>,
-    filename: Option<String>,
+    pub id: Option<String>,
+    pub title: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub filename: Option<String>,
 }
 
 impl From<ResultRow> for Node {
@@ -43,4 +43,32 @@ impl Node {
             .map(Node::from)
             .ok_or(Error::NodeNotFound)
     }
+
+    pub async fn tags (&self) -> Result<Vec<String>> {
+        let id = self.id.clone().expect("id of the `Node` isn't exists");
+        let query = Select::from_table("tags")
+            .column("tag")
+            .and_where(Column::new("node_id").equals(id));
+        let tags = db_connection()
+            .await?
+            .select(query)
+            .await?
+            .into_iter()
+            .map(|row| row[0].clone().into_string()
+                 .expect("In `tags.node_id` column not string"))
+            .collect();
+        Ok(tags)
+    }
+}
+
+pub async fn all_nodes () -> Result<Vec<Node>> {
+    let query = Select::from_table("nodes").columns(["file", "title", "id"]);
+    let nodes = db_connection()
+        .await?
+        .select(query)
+        .await?
+        .into_iter()
+        .map(Node::from)
+        .collect();
+    Ok(nodes)
 }
