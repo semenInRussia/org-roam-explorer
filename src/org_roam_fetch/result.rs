@@ -3,7 +3,9 @@ pub enum Error {
     /// Error from `quaint`
     DBError(quaint::error::Error),
     /// Error when `Node` isn't found in DB
-    NodeNotFound
+    NodeNotFound,
+    /// Error when `Tag` isn't found in DB
+    TagNotFound
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
