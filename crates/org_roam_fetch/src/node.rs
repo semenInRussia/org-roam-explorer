@@ -92,19 +92,49 @@ pub async fn all_nodes() -> Result<Vec<Node>> {
 
 #[cfg(test)]
 mod tests {
-    use crate::node::Node;
+    use crate::node::{Node, all_nodes};
 
     #[tokio::test]
-    async fn node_title() {
+    async fn test_node_title() {
         let node = Node::by_id("1").await
             .expect("Node with available id not found");
         assert_eq!(node.title(), "momentum");
     }
 
     #[tokio::test]
-    async fn node_filename() {
+    async fn test_node_filename() {
         let node = Node::by_id("1").await
             .expect("Node with available id not found");
         assert_eq!(node.filename(), "org-roam/momentum.org");
+    }
+
+    #[tokio::test]
+    async fn test_node_tags () {
+        use crate::tag::Tag;
+        let node = Node::by_id("1").await.expect("Error when fetch a node");
+        assert_eq!(node.tags().await.expect("Error when fetch node tags"),
+                   vec![Tag::new("\"physics\"")]);
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "given a Error::NoteNotFound")]
+    async fn test_node_not_found () {
+        Node::by_id("undefined id").await
+            .expect("given a Error::NoteNotFound");
+    }
+
+    #[tokio::test]
+    async fn test_all_nodes () {
+        let nodes = all_nodes().await.expect("Error when fetch all nodes");
+        assert_eq!(nodes.len(), 5);
+        let titles: Vec<String> = nodes
+            .into_iter()
+            .map(|n| n.title().clone())
+            .collect();
+        assert_eq!(titles, vec!["momentum",
+                                "mass",
+                                "si",
+                                "Second Law of Newton",
+                                "newton"]);
     }
 }
