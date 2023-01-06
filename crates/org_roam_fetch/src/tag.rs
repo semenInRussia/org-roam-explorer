@@ -2,7 +2,7 @@ use quaint::{connector::ResultRow, prelude::*};
 
 use crate::connection::db_connection;
 use crate::result::{Error, Result};
-use crate::utils::{remove_quotes_around, add_quotes_around};
+use crate::utils::{add_quotes_around, remove_quotes_around};
 
 #[derive(Debug, PartialEq)]
 pub struct Tag {
@@ -20,7 +20,7 @@ impl From<ResultRow> for Tag {
 }
 
 impl Tag {
-    pub async fn by_name (name: &str) -> Result<Self> {
+    pub async fn by_name(name: &str) -> Result<Self> {
         let query = Select::from_table("tags")
             .column("tag")
             .and_where("tag".equals(add_quotes_around(name)));
@@ -34,11 +34,14 @@ impl Tag {
             .ok_or(Error::TagNotFound)
     }
 
-    pub fn name (&self) -> String {
+    pub fn name(&self) -> String {
         remove_quotes_around(self.name.clone())
     }
 
-    pub fn new<T> (name: T) -> Self where T: Into<String> {
+    pub fn new<T>(name: T) -> Self
+    where
+        T: Into<String>,
+    {
         Tag { name: name.into() }
     }
 }
@@ -48,8 +51,9 @@ mod tests {
     use crate::tag::Tag;
 
     #[tokio::test]
-    async fn test_tag_name () {
-        let tag = Tag::by_name("physics").await
+    async fn test_tag_name() {
+        let tag = Tag::by_name("physics")
+            .await
             .expect("Error when fetch a tag");
         assert_eq!(tag.name(), "physics");
     }

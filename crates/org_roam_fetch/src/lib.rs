@@ -1,6 +1,6 @@
-extern crate tokio;
 extern crate dotenvy;
 extern crate quaint;
+extern crate tokio;
 
 mod connection;
 pub mod node;
