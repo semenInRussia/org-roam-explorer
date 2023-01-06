@@ -2,11 +2,11 @@
 pub enum Error {
     /// an error with database
     DBError(quaint::error::Error),
-    /// a node (`Node`) isn't found in database
+    /// a node (`Node`) isn't found in the database
     NodeNotFound,
-    /// open a file of a node (`Node`) isn't work
+    /// opening a node file (`Node`) doesn't work
     NodeFileOpenError(std::io::Error),
-    /// Error when `Tag` isn't found in DB
+    /// a tag (`Tag`) isn't found in the database
     TagNotFound,
 }
 
