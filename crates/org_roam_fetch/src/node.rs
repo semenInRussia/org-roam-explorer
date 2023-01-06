@@ -90,9 +90,26 @@ pub async fn all_nodes() -> Result<Vec<Node>> {
     Ok(nodes)
 }
 
+async fn nodes_of_tag (tag: Tag) -> Result<Vec<Node>> {
+    let node_ids_of_tag = Select::from_table("tags")
+        .and_where(Column::new("tag").equals(add_quotes_around(tag.name())))
+        .column("node_id");
+    let query = Select::from_table("nodes")
+        .and_where("id".in_selection(node_ids_of_tag))
+        .columns(["file", "title", "id"]);
+    let nodes = db_connection()
+        .await?
+        .select(query)
+        .await?
+        .into_iter()
+        .map(Node::from)
+        .collect();
+    Ok(nodes)
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::node::{Node, all_nodes};
+    use crate::node::{Node, all_nodes, nodes_of_tag};
 
     #[tokio::test]
     async fn test_node_title() {
@@ -127,14 +144,22 @@ mod tests {
     async fn test_all_nodes () {
         let nodes = all_nodes().await.expect("Error when fetch all nodes");
         assert_eq!(nodes.len(), 5);
-        let titles: Vec<String> = nodes
-            .into_iter()
-            .map(|n| n.title().clone())
-            .collect();
+        let titles: Vec<String> = nodes.iter().map(Node::title).collect();
         assert_eq!(titles, vec!["momentum",
                                 "mass",
                                 "si",
                                 "Second Law of Newton",
                                 "newton"]);
+    }
+
+    #[tokio::test]
+    async fn test_nodes_of_tag () {
+        use crate::tag::Tag;
+        let tag = Tag::by_name("person").await.expect("Error when fetch a tag");
+        let nodes: Vec<Node> = nodes_of_tag(tag)
+            .await.expect("Error when fetch nodes of a tag");
+        assert_eq!(nodes.len(), 1);
+        let nodes_titles: Vec<String> = nodes.iter().map(Node::title).collect();
+        assert_eq!(nodes_titles, vec!["newton"]);
     }
 }
