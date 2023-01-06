@@ -18,3 +18,28 @@ pub async fn db_connection() -> Result<PooledConnection> {
     let conn = Quaint::new(url.as_str()).await?.check_out().await?;
     Ok(conn)
 }
+
+macro_rules! select_first_in_db {
+    ($query:expr) => {
+        db_connection()
+            .await?
+            .select($query)
+            .await?
+            .into_iter()
+            .nth(0)
+            .as_ref()
+            .map(Into::into)
+    };
+}
+
+macro_rules! select_in_db {
+    ($query:expr) => {
+        db_connection()
+            .await?
+            .select($query)
+            .await?
+            .into_iter()
+            .map(|row| (&row).into())
+            .collect()
+    };
+}

@@ -24,15 +24,7 @@ impl Tag {
         let query = Select::from_table("tags")
             .column("tag")
             .and_where("tag".equals(add_quotes_around(name)));
-        db_connection()
-            .await?
-            .select(query)
-            .await?
-            .into_iter()
-            .nth(0)
-            .as_ref()
-            .map(Tag::from)
-            .ok_or(Error::TagNotFound)
+        select_first_in_db!(query).ok_or(Error::TagNotFound)
     }
 
     pub fn name(&self) -> String {

@@ -31,30 +31,20 @@ impl From<&ResultRow> for Node {
 
 impl Node {
     pub async fn by_id(id: &str) -> Result<Self> {
-        let id = add_quotes_around(id);
         let tags = "tags".alias("t");
-        let node_id = Column::from(("nodes", "id"));
-        let tag_node_id = ("t", "node_id");
         let query = Select::from_table("nodes")
-            .inner_join(tags.on(tag_node_id.equals(node_id.clone())))
-            .and_where(node_id.equals(id))
+            .inner_join(tags.on(("t", "node_id").equals(col!("nodes", "id"))))
+            .and_where(col!("nodes", "id").equals(add_quotes_around(id)))
             .columns(["id", "title", "file", "tag"]);
-        let rows: &Vec<ResultRow> = &db_connection()
-            .await?
-            .select(query)
-            .await?
-            .into_iter()
-            .collect();
-        let mut node = rows
-            .first()
+        let rows: &Vec<ResultRow> = &db_connection().await?
+            .select(query).await?.into_iter().collect();
+        let mut node = rows.first()
             .map(Node::from)
-            .clone()
             .ok_or(Error::NodeNotFound)?;
         let tags = rows.iter().map(Tag::from).collect();
         node.tags = Some(tags);
         Ok(node)
     }
-
 
     pub fn file(&self) -> Result<File> {
         let filename = self.filename();
@@ -84,13 +74,7 @@ impl Node {
 
 pub async fn all_nodes() -> Result<Vec<Node>> {
     let query = Select::from_table("nodes").columns(["file", "title", "id"]);
-    let nodes = db_connection()
-        .await?
-        .select(query)
-        .await?
-        .into_iter()
-        .map(|row| (&row).into())
-        .collect();
+    let nodes = select_in_db!(query);
     Ok(nodes)
 }
 
@@ -101,13 +85,7 @@ async fn nodes_of_tag(tag: Tag) -> Result<Vec<Node>> {
     let query = Select::from_table("nodes")
         .and_where("id".in_selection(node_ids_of_tag))
         .columns(["file", "title", "id"]);
-    let nodes = db_connection()
-        .await?
-        .select(query)
-        .await?
-        .into_iter()
-        .map(|row| (&row).into())
-        .collect();
+    let nodes: Vec<Node> = select_in_db!(query);
     Ok(nodes)
 }
 
