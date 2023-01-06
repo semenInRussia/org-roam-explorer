@@ -47,31 +47,39 @@ impl Node {
     }
 
     pub fn file(&self) -> Result<File> {
-        File::open(self.filename()).map_err(Error::NodeFileOpenError)
+        File::open(self.filename()?).map_err(Error::NodeFileOpenError)
     }
 
-    pub fn filename(&self) -> String {
+    pub fn filename(&self) -> Result<String> {
         self.filename
             .clone()
             .map(remove_quotes_around)
-            .expect("File of a `Node` isn't given in the instance")
+            .ok_or(Error::NodeFileNameNotFetched)
     }
 
-    pub async fn tags(&mut self) -> Result<Vec<Tag>> {
+    pub async fn tags(&self) -> Result<Vec<Tag>> {
         if let Some(tgs) = &self.tags {
             return Ok(tgs.to_vec())
         }
-        let query = Select::from_table("tags").column("tag");
+        let query = Select::from_table("tags")
+            .column("tag")
+            .and_where("node_id".equals(add_quotes_around(&self.id()?)));
         let tags: Vec<Tag> = select_in_db!(query);
-        self.tags = Some(tags.clone());
         Ok(tags)
     }
 
-    pub fn title(&self) -> String {
+    pub fn id (&self) -> Result<String> {
+        self.id
+            .clone()
+            .map(remove_quotes_around)
+            .ok_or(Error::NodeIdNotFetched)
+    }
+
+    pub fn title(&self) -> Result<String> {
         self.title
             .clone()
             .map(remove_quotes_around)
-            .expect("File of a `Node` isn't given in the instance")
+            .ok_or(Error::NodeTitleNotFetched)
     }
 }
 
@@ -101,7 +109,7 @@ mod tests {
         let node = Node::by_id("1")
             .await
             .expect("Node with available id not found");
-        assert_eq!(node.title(), "momentum");
+        assert_eq!(node.title().unwrap(), "momentum");
     }
 
     #[tokio::test]
@@ -109,17 +117,15 @@ mod tests {
         let node = Node::by_id("1")
             .await
             .expect("Node with available id not found");
-        assert_eq!(node.filename(), "org-roam/momentum.org");
+        assert_eq!(node.filename().unwrap(), "org-roam/momentum.org");
     }
 
     #[tokio::test]
     async fn test_node_tags() {
         use crate::tag::Tag;
         let node = Node::by_id("1").await.expect("Error when fetch a node");
-        assert_eq!(
-            node.tags(),
-            vec![Tag::new("\"physics\"")]
-        );
+        assert_eq!(node.tags().await.unwrap(),
+                   vec![Tag::new("\"physics\"")]);
     }
 
     #[tokio::test]
@@ -135,14 +141,17 @@ mod tests {
         use crate::tag::Tag;
         let nodes = all_nodes().await.expect("Error when fetch all nodes");
         assert_eq!(nodes.len(), 5);
-        let titles: Vec<String> = nodes.iter().map(Node::title).collect();
+        let titles: Vec<String> = nodes.iter()
+            .map(Node::title)
+            .map(Result::unwrap)
+            .collect();
         assert_eq!(
             titles,
             vec!["momentum", "mass", "si", "Second Law of Newton", "newton"]
         );
-        let momentum = nodes.first().unwrap();
+        let momentum = nodes.into_iter().nth(0).unwrap();
         assert_eq!(
-            momentum.tags().expect("error when fetch node tags"),
+            momentum.tags().await.expect("error when fetch node tags"),
             vec![Tag::new("\"physics\"")]
         )
     }
@@ -156,7 +165,10 @@ mod tests {
         let nodes = nodes_of_tag(tag).await
             .expect("Error when fetch nodes of a tag");
         assert_eq!(nodes.len(), 1);
-        let nodes_titles: Vec<String> = nodes.iter().map(Node::title).collect();
+        let nodes_titles: Vec<String> = nodes.iter()
+            .map(Node::title)
+            .map(Result::unwrap)
+            .collect();
         assert_eq!(nodes_titles, vec!["newton"]);
     }
 }
