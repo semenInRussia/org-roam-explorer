@@ -47,8 +47,7 @@ impl Node {
     }
 
     pub fn file(&self) -> Result<File> {
-        let filename = self.filename();
-        File::open(filename).map_err(Error::NodeFileOpenError)
+        File::open(self.filename()).map_err(Error::NodeFileOpenError)
     }
 
     pub fn filename(&self) -> String {
@@ -58,10 +57,14 @@ impl Node {
             .expect("File of a `Node` isn't given in the instance")
     }
 
-    pub fn tags(&self) -> Vec<Tag> {
-        self.tags
-            .clone()
-            .expect("Tags haven't setted yet, create Node using Node::by_id")
+    pub async fn tags(&mut self) -> Result<Vec<Tag>> {
+        if let Some(tgs) = &self.tags {
+            return Ok(tgs.to_vec())
+        }
+        let query = Select::from_table("tags").column("tag");
+        let tags: Vec<Tag> = select_in_db!(query);
+        self.tags = Some(tags.clone());
+        Ok(tags)
     }
 
     pub fn title(&self) -> String {
@@ -129,6 +132,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_all_nodes() {
+        use crate::tag::Tag;
         let nodes = all_nodes().await.expect("Error when fetch all nodes");
         assert_eq!(nodes.len(), 5);
         let titles: Vec<String> = nodes.iter().map(Node::title).collect();
@@ -136,6 +140,11 @@ mod tests {
             titles,
             vec!["momentum", "mass", "si", "Second Law of Newton", "newton"]
         );
+        let momentum = nodes.first().unwrap();
+        assert_eq!(
+            momentum.tags().expect("error when fetch node tags"),
+            vec![Tag::new("\"physics\"")]
+        )
     }
 
     #[tokio::test]
