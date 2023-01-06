@@ -21,10 +21,9 @@ impl From<ResultRow> for Tag {
 
 impl Tag {
     pub async fn by_name (name: &str) -> Result<Self> {
-        let name = add_quotes_around(name);
         let query = Select::from_table("tags")
             .column("tag")
-            .and_where(Column::new("tag").equals(name));
+            .and_where("tag".equals(add_quotes_around(name)));
         db_connection()
             .await?
             .select(query)

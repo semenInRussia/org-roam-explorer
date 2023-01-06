@@ -32,7 +32,7 @@ impl Node {
         let id = add_quotes_around(id);
         let query = Select::from_table("nodes")
             .columns(["id", "title", "file"])
-            .and_where(Column::new("id").equals(id));
+            .and_where("id".equals(id));
         db_connection()
             .await?
             .select(query)
@@ -47,7 +47,7 @@ impl Node {
         let id = self.id.clone().expect("id of the `Node` isn't exists");
         let query = Select::from_table("tags")
             .column("tag")
-            .and_where(Column::new("node_id").equals(id));
+            .and_where("node_id".equals(id));
         let tags = db_connection()
             .await?
             .select(query)
@@ -92,7 +92,7 @@ pub async fn all_nodes() -> Result<Vec<Node>> {
 
 async fn nodes_of_tag (tag: Tag) -> Result<Vec<Node>> {
     let node_ids_of_tag = Select::from_table("tags")
-        .and_where(Column::new("tag").equals(add_quotes_around(tag.name())))
+        .and_where("tag".equals(add_quotes_around(tag.name())))
         .column("node_id");
     let query = Select::from_table("nodes")
         .and_where("id".in_selection(node_ids_of_tag))
