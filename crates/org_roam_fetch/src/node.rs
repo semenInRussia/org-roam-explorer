@@ -7,22 +7,24 @@ use crate::utils::{add_quotes_around, remove_quotes_around};
 use quaint::prelude::*;
 
 // NOTE: I am not use columns from the table Node which for me useless
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Node {
     id: Option<String>,
     title: Option<String>,
     filename: Option<String>,
+    tags: Option<Vec<Tag>>,
 }
 
-impl From<ResultRow> for Node {
-    fn from(row: ResultRow) -> Self {
-        let id = (&row)["id"].clone().into_string();
-        let title = (&row)["title"].clone().into_string();
-        let filename = (&row)["file"].clone().into_string();
+impl From<&ResultRow> for Node {
+    fn from(row: &ResultRow) -> Self {
+        let id = row["id"].clone().into_string();
+        let title = row["title"].clone().into_string();
+        let filename = row["file"].clone().into_string();
         Node {
             id,
             title,
             filename,
+            tags: None
         }
     }
 }
@@ -30,39 +32,33 @@ impl From<ResultRow> for Node {
 impl Node {
     pub async fn by_id(id: &str) -> Result<Self> {
         let id = add_quotes_around(id);
+        let tags = "tags".alias("t");
+        let node_id = Column::from(("nodes", "id"));
+        let tag_node_id = ("t", "node_id");
         let query = Select::from_table("nodes")
-            .columns(["id", "title", "file"])
-            .and_where("id".equals(id));
-        db_connection()
+            .inner_join(tags.on(tag_node_id.equals(node_id.clone())))
+            .and_where(node_id.equals(id))
+            .columns(["id", "title", "file", "tag"]);
+        let rows: &Vec<ResultRow> = &db_connection()
             .await?
             .select(query)
             .await?
             .into_iter()
-            .nth(0)
-            .map(Node::from)
-            .ok_or(Error::NodeNotFound)
-    }
-
-    pub async fn tags(&self) -> Result<Vec<Tag>> {
-        let id = self.id.clone().expect("id of the `Node` isn't exists");
-        let query = Select::from_table("tags")
-            .column("tag")
-            .and_where("node_id".equals(id));
-        let tags = db_connection()
-            .await?
-            .select(query)
-            .await?
-            .into_iter()
-            .map(Tag::from)
             .collect();
-        Ok(tags)
+        let mut node = rows
+            .first()
+            .map(Node::from)
+            .clone()
+            .ok_or(Error::NodeNotFound)?;
+        let tags = rows.iter().map(Tag::from).collect();
+        node.tags = Some(tags);
+        Ok(node)
     }
 
-    pub fn title(&self) -> String {
-        self.title
-            .clone()
-            .map(remove_quotes_around)
-            .expect("File of a `Node` isn't given in the instance")
+
+    pub fn file(&self) -> Result<File> {
+        let filename = self.filename();
+        File::open(filename).map_err(Error::NodeFileOpenError)
     }
 
     pub fn filename(&self) -> String {
@@ -72,9 +68,17 @@ impl Node {
             .expect("File of a `Node` isn't given in the instance")
     }
 
-    pub fn file(&self) -> Result<File> {
-        let filename = self.filename();
-        File::open(filename).map_err(Error::NodeFileOpenError)
+    pub fn tags(&self) -> Vec<Tag> {
+        self.tags
+            .clone()
+            .expect("Tags haven't setted yet, create Node using Node::by_id")
+    }
+
+    pub fn title(&self) -> String {
+        self.title
+            .clone()
+            .map(remove_quotes_around)
+            .expect("File of a `Node` isn't given in the instance")
     }
 }
 
@@ -85,7 +89,7 @@ pub async fn all_nodes() -> Result<Vec<Node>> {
         .select(query)
         .await?
         .into_iter()
-        .map(Node::from)
+        .map(|row| (&row).into())
         .collect();
     Ok(nodes)
 }
@@ -102,7 +106,7 @@ async fn nodes_of_tag(tag: Tag) -> Result<Vec<Node>> {
         .select(query)
         .await?
         .into_iter()
-        .map(Node::from)
+        .map(|row| (&row).into())
         .collect();
     Ok(nodes)
 }
@@ -132,7 +136,7 @@ mod tests {
         use crate::tag::Tag;
         let node = Node::by_id("1").await.expect("Error when fetch a node");
         assert_eq!(
-            node.tags().await.expect("Error when fetch node tags"),
+            node.tags(),
             vec![Tag::new("\"physics\"")]
         );
     }
@@ -162,8 +166,7 @@ mod tests {
         let tag = Tag::by_name("person")
             .await
             .expect("Error when fetch a tag");
-        let nodes: Vec<Node> = nodes_of_tag(tag)
-            .await
+        let nodes = nodes_of_tag(tag).await
             .expect("Error when fetch nodes of a tag");
         assert_eq!(nodes.len(), 1);
         let nodes_titles: Vec<String> = nodes.iter().map(Node::title).collect();

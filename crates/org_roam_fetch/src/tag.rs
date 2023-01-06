@@ -4,13 +4,13 @@ use crate::connection::db_connection;
 use crate::result::{Error, Result};
 use crate::utils::{add_quotes_around, remove_quotes_around};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Tag {
     name: String,
 }
 
-impl From<ResultRow> for Tag {
-    fn from(row: ResultRow) -> Self {
+impl From<&ResultRow> for Tag {
+    fn from(row: &ResultRow) -> Self {
         row["tag"]
             .clone()
             .into_string()
@@ -30,6 +30,7 @@ impl Tag {
             .await?
             .into_iter()
             .nth(0)
+            .as_ref()
             .map(Tag::from)
             .ok_or(Error::TagNotFound)
     }
