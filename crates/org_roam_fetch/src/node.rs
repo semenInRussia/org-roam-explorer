@@ -9,9 +9,13 @@ use quaint::prelude::*;
 // NOTE: I am not use columns from the table Node which for me useless
 #[derive(Debug, Clone)]
 pub struct Node {
+    /// the identifier of the node.  This is value of propertry ID in the node `org-mode` heading
     id: Option<String>,
+    /// the title of the node.  This is a title of the `org-mode` heading
     title: Option<String>,
+    /// name of the file in which stored `org-mode` with the node
     filename: Option<String>,
+    /// list of the node's tags
     tags: Option<Vec<Tag>>,
 }
 
@@ -24,7 +28,7 @@ impl From<&ResultRow> for Node {
             id,
             title,
             filename,
-            tags: None
+            tags: None,
         }
     }
 }
@@ -36,11 +40,13 @@ impl Node {
             .inner_join(tags.on(("t", "node_id").equals(col!("nodes", "id"))))
             .and_where(col!("nodes", "id").equals(add_quotes_around(id)))
             .columns(["id", "title", "file", "tag"]);
-        let rows: &Vec<ResultRow> = &db_connection().await?
-            .select(query).await?.into_iter().collect();
-        let mut node = rows.first()
-            .map(Node::from)
-            .ok_or(Error::NodeNotFound)?;
+        let rows: &Vec<ResultRow> = &db_connection()
+            .await?
+            .select(query)
+            .await?
+            .into_iter()
+            .collect();
+        let mut node = rows.first().map(Node::from).ok_or(Error::NodeNotFound)?;
         let tags = rows.iter().map(Tag::from).collect();
         node.tags = Some(tags);
         Ok(node)
@@ -59,7 +65,7 @@ impl Node {
 
     pub async fn tags(&self) -> Result<Vec<Tag>> {
         if let Some(tgs) = &self.tags {
-            return Ok(tgs.to_vec())
+            return Ok(tgs.to_vec());
         }
         let query = Select::from_table("tags")
             .column("tag")
@@ -68,7 +74,7 @@ impl Node {
         Ok(tags)
     }
 
-    pub fn id (&self) -> Result<String> {
+    pub fn id(&self) -> Result<String> {
         self.id
             .clone()
             .map(remove_quotes_around)
@@ -83,13 +89,16 @@ impl Node {
     }
 }
 
-pub async fn all_nodes() -> Result<Vec<Node>> {
-    let query = Select::from_table("nodes").columns(["file", "title", "id"]);
+pub async fn all_nodes(limit: usize, offset: usize) -> Result<Vec<Node>> {
+    let query = Select::from_table("nodes")
+        .columns(["file", "title", "id"])
+        .offset(offset)
+        .limit(limit);
     let nodes = select_in_db!(query);
     Ok(nodes)
 }
 
-async fn nodes_of_tag(tag: Tag) -> Result<Vec<Node>> {
+pub async fn nodes_of_tag(tag: Tag) -> Result<Vec<Node>> {
     let node_ids_of_tag = Select::from_table("tags")
         .and_where("tag".equals(add_quotes_around(tag.name())))
         .column("node_id");
@@ -124,8 +133,7 @@ mod tests {
     async fn test_node_tags() {
         use crate::tag::Tag;
         let node = Node::by_id("1").await.expect("Error when fetch a node");
-        assert_eq!(node.tags().await.unwrap(),
-                   vec![Tag::new("\"physics\"")]);
+        assert_eq!(node.tags().await.unwrap(), vec![Tag::new("\"physics\"")]);
     }
 
     #[tokio::test]
@@ -139,12 +147,9 @@ mod tests {
     #[tokio::test]
     async fn test_all_nodes() {
         use crate::tag::Tag;
-        let nodes = all_nodes().await.expect("Error when fetch all nodes");
+        let nodes = all_nodes(128, 0).await.expect("Error when fetch all nodes");
         assert_eq!(nodes.len(), 5);
-        let titles: Vec<String> = nodes.iter()
-            .map(Node::title)
-            .map(Result::unwrap)
-            .collect();
+        let titles: Vec<String> = nodes.iter().map(Node::title).map(Result::unwrap).collect();
         assert_eq!(
             titles,
             vec!["momentum", "mass", "si", "Second Law of Newton", "newton"]
@@ -157,12 +162,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_all_nodes_with_offset_and_limit() {
+        let second_nodes = all_nodes(1, 1).await.expect("Error when fetch 1 node after first");
+        assert_eq!(second_nodes.len(), 1);
+        let node = second_nodes.iter().nth(0).expect("Fetched 0 nodes, instead of 1");
+        assert_eq!(node.title().unwrap(), "mass");
+    }
+
+    #[tokio::test]
     async fn test_nodes_of_tag() {
         use crate::tag::Tag;
         let tag = Tag::by_name("person")
             .await
             .expect("Error when fetch a tag");
-        let nodes = nodes_of_tag(tag).await
+        let nodes = nodes_of_tag(tag)
+            .await
             .expect("Error when fetch nodes of a tag");
         assert_eq!(nodes.len(), 1);
         let nodes_titles: Vec<String> = nodes.iter()

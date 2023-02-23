@@ -9,12 +9,12 @@ async fn main() {
 
     println!("{:?}", tag.name());
 
-    let title = all_nodes()
+    let title = all_nodes(128, 0)
         .await
         .expect("Nodes not fetched")
         .first()
         .expect("Fetched zero nodes")
         .title();
 
-    println!("{}", title);
+    println!("{:?}", title);
 }
