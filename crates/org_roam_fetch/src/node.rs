@@ -1,4 +1,4 @@
-use std::fs::File;
+use tokio::fs::File;
 
 use sqlx::sqlite::SqliteRow;
 use sqlx::{SqlitePool, self, Row};
@@ -48,8 +48,9 @@ where nodes.id = $1"#;
     }
 
     /// return the opened file in which stored a node
-    pub fn file(&self) -> Result<File> {
-        File::open(self.filename()?).map_err(Error::NodeFileOpenError)
+    pub async fn file(&self) -> Result<File> {
+        File::open(self.filename()?).await
+            .map_err(Error::NodeFileOpenError)
     }
 
     /// return the path to the file in which stored a node
