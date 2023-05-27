@@ -1,16 +1,29 @@
-use sqlx::{self, SqlitePool};
+use sqlx::{self, SqlitePool, Row, sqlite::SqliteRow};
 
 use crate::result::{Result, Error};
 
 use crate::utils::{add_quotes_around, remove_quotes_around};
 
-#[derive(sqlx::FromRow, Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Tag {
-    #[sqlx(rename = "tag")]
     name: String,
 }
 
+impl<'a> sqlx::FromRow<'a, SqliteRow> for Tag {
+    fn from_row(row: &'a SqliteRow) -> std::result::Result<Self, sqlx::Error> {
+        let name: String = row.try_get("tag")?;
+        Ok(Tag::new(remove_quotes_around(&name)))
+    }
+}
+
 impl Tag {
+    pub fn new<T>(name: T) -> Self
+    where
+        T: Into<String>,
+    {
+        Tag { name: name.into() }
+    }
+
     pub async fn by_name(name: &str, pool: &SqlitePool) -> Result<Self> {
         sqlx::query_as("SELECT tag FROM tags WHERE tag = $1")
             .bind(add_quotes_around(name))
@@ -22,14 +35,7 @@ impl Tag {
     }
 
     pub fn name(&self) -> String {
-        remove_quotes_around(&self.name).to_owned()
-    }
-
-    pub fn new<T>(name: T) -> Self
-    where
-        T: Into<String>,
-    {
-        Tag { name: name.into() }
+        self.name.clone()
     }
 
     pub async fn all_tags(pool: &SqlitePool) -> Result<Vec<Self>> {

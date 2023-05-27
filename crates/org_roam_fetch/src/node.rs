@@ -26,9 +26,9 @@ pub struct Node {
 impl<'a> sqlx::FromRow<'a, SqliteRow> for Node {
     fn from_row(row: &'a SqliteRow) -> std::result::Result<Self, sqlx::Error> {
         let node = Self {
-            id: row.try_get("id").ok(),
-            title: row.try_get("title").ok(),
-            filename: row.try_get("file").ok(),
+            id: row.try_get("id").map(|ref s| remove_quotes_around(s).to_string()).ok(),
+            title: row.try_get("title").map(|ref s| remove_quotes_around(s).to_string()).ok(),
+            filename: row.try_get("file").map(|ref s| remove_quotes_around(s).to_string()).ok(),
             tags: None
         };
         Ok(node)
@@ -60,11 +60,10 @@ where nodes.id = $1"#;
     ///
     /// if the filename isn't provided, return `Error::NodeFileNameNotFetched`
     pub fn filename(&self) -> Result<String> {
-        self.filename
-            .as_ref()
-            .map(remove_quotes_around)
-            .map(ToOwned::to_owned)
-            .ok_or(Error::NodeFileNameNotFetched)
+        match &self.filename {
+            Some(name) => Ok(name.clone()),
+            None => Err(Error::NodeFileNameNotFetched),
+        }
     }
 
     /// returns the vector of tags of a node in `Result` container.
@@ -74,7 +73,9 @@ where nodes.id = $1"#;
         if let Some(tgs) = &self.tags {
             return Ok(tgs.to_owned());
         }
-        let id = self.id.as_ref().ok_or(Error::TagNotFound)?;
+        let id = self.id.as_ref()
+            .map(add_quotes_around)
+            .ok_or(Error::TagNotFound)?;
         let q = format!("SELECT tag FROM tags WHERE node_id = '{id}'");
         sqlx::query_as(&q)
             .fetch_all(pool).await
@@ -86,22 +87,20 @@ where nodes.id = $1"#;
     /// If ID isn't provided, return `Error::NodeIdNotFetched`.
     /// Example of a ID: "5f55037f-3e25-448b-97f2-65efd258265c".
     pub fn id(&self) -> Result<String> {
-        self.id
-            .as_ref()
-            .map(remove_quotes_around)
-            .map(ToOwned::to_owned)
-            .ok_or(Error::NodeIdNotFetched)
+        match &self.id {
+            Some(id) => Ok(id.clone()),
+            None => Err(Error::NodeIdNotFetched),
+        }
     }
 
     /// return the title of a node in `Result` container.
     ///
     /// If the title isn't provided, return `Error::NodeTitleNotFetched`
     pub fn title(&self) -> Result<String> {
-        self.title
-            .as_ref()
-            .map(remove_quotes_around)
-            .map(ToOwned::to_owned)
-            .ok_or(Error::NodeTitleNotFetched)
+        match &self.title {
+            Some(t) => Ok(t.clone()),
+            None => Err(Error::NodeTitleNotFetched),
+        }
     }
 }
 
@@ -151,7 +150,7 @@ mod tests {
         use crate::tag::Tag;
         let pool = default_db_pool().await.expect("I can't open the pool");
         let node = Node::by_id("1".into(), &pool).await.expect("Error when fetch a node");
-        assert_eq!(node.tags(&pool).await.unwrap(), vec![Tag::new("\"physics\"")]);
+        assert_eq!(node.tags(&pool).await.unwrap(), vec![Tag::new("physics")]);
     }
 
     #[tokio::test]
@@ -176,7 +175,7 @@ mod tests {
         // fails
         assert_eq!(
             momentum.tags(&pool).await.expect("error when fetch node tags"),
-            vec![Tag::new("\"physics\"")]
+            vec![Tag::new("physics")]
         );
     }
 
