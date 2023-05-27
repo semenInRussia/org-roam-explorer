@@ -38,11 +38,13 @@ impl Tag {
 
 #[cfg(test)]
 mod tests {
+    use crate::connection::default_db_pool;
     use crate::tag::Tag;
 
     #[tokio::test]
     async fn test_tag_name() {
-        let tag = Tag::by_name("physics").await
+        let pool = default_db_pool().await.expect("I can't open the pool");
+        let tag = Tag::by_name("physics", &pool).await
             .expect("Error when fetch a tag");
         assert_eq!(tag.name(), "physics");
     }

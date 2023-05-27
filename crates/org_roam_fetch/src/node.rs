@@ -70,9 +70,9 @@ where nodes.id = $1"#;
         if let Some(tgs) = &self.tags {
             return Ok(tgs.to_owned());
         }
-        let q = "select tag from tags where node_id = $1";
-        sqlx::query_as(q)
-            .bind(add_quotes_around(self.id.as_ref().ok_or(Error::TagNotFound)?))
+        let id = self.id.as_ref().ok_or(Error::TagNotFound)?;
+        let q = format!("SELECT tag FROM tags WHERE node_id = '{id}'");
+        sqlx::query_as(&q)
             .fetch_all(pool).await
             .map_err(Error::DBError)
     }
@@ -102,9 +102,9 @@ where nodes.id = $1"#;
 }
 
 pub async fn all_nodes(limit: usize, offset: usize, pool: &SqlitePool) -> Result<Vec<Node>> {
-    sqlx::query_as("SELECT file, title, id FROM nodes OFFSET $1 LIMIT $2")
-        .bind(offset as u32)
+    sqlx::query_as("SELECT file, title, id FROM nodes LIMIT $1 OFFSET $2")
         .bind(limit as u32)
+        .bind(offset as u32)
         .fetch_all(pool).await
         .map_err(Error::DBError)
 }
@@ -122,19 +122,21 @@ WHERE id in (SELECT node_id FROM tags WHERE tag = $1)"#;
 
 #[cfg(test)]
 mod tests {
+    use crate::connection::default_db_pool;
     use crate::node::{all_nodes, nodes_of_tag, Node};
 
     #[tokio::test]
     async fn test_node_title() {
-        let node = Node::by_id("1".into())
-            .await
+        let pool = default_db_pool().await.expect("I can't open the pool");
+        let node = Node::by_id("1".to_string(), &pool).await
             .expect("Node with available id not found");
         assert_eq!(node.title().unwrap(), "momentum");
     }
 
     #[tokio::test]
     async fn test_node_filename() {
-        let node = Node::by_id("1".into())
+        let pool = default_db_pool().await.expect("I can't open the pool");
+        let node = Node::by_id("1".into(), &pool)
             .await
             .expect("Node with available id not found");
         assert_eq!(node.filename().unwrap(), "org-roam/momentum.org");
@@ -143,22 +145,25 @@ mod tests {
     #[tokio::test]
     async fn test_node_tags() {
         use crate::tag::Tag;
-        let node = Node::by_id("1".into()).await.expect("Error when fetch a node");
-        assert_eq!(node.tags().await.unwrap(), vec![Tag::new("\"physics\"")]);
+        let pool = default_db_pool().await.expect("I can't open the pool");
+        let node = Node::by_id("1".into(), &pool).await.expect("Error when fetch a node");
+        assert_eq!(node.tags(&pool).await.unwrap(), vec![Tag::new("\"physics\"")]);
     }
 
     #[tokio::test]
-    #[should_panic(expected = "given a Error::NoteNotFound")]
+    #[should_panic(expected = "given a Error::NodeNotFound")]
     async fn test_node_not_found() {
-        Node::by_id("undefined id".into())
+        let pool = default_db_pool().await.expect("I can't open the pool");
+        Node::by_id("undefined id".into(), &pool)
             .await
-            .expect("given a Error::NoteNotFound");
+            .expect("given a Error::NodeNotFound");
     }
 
     #[tokio::test]
     async fn test_all_nodes() {
         use crate::tag::Tag;
-        let nodes = all_nodes(128, 0).await.expect("Error when fetch all nodes");
+        let pool = default_db_pool().await.expect("I can't open the pool");
+        let nodes = all_nodes(128, 0, &pool).await.expect("Error when fetch all nodes");
         assert_eq!(nodes.len(), 5);
         let titles: Vec<String> = nodes.iter().map(Node::title).map(Result::unwrap).collect();
         assert_eq!(
@@ -166,15 +171,18 @@ mod tests {
             vec!["momentum", "mass", "si", "Second Law of Newton", "newton"]
         );
         let momentum = nodes.into_iter().nth(0).unwrap();
+        // fails
         assert_eq!(
-            momentum.tags().await.expect("error when fetch node tags"),
+            momentum.tags(&pool).await.expect("error when fetch node tags"),
             vec![Tag::new("\"physics\"")]
-        )
+        );
     }
 
     #[tokio::test]
     async fn test_all_nodes_with_offset_and_limit() {
-        let second_nodes = all_nodes(1, 1).await.expect("Error when fetch 1 node after first");
+        let pool = default_db_pool().await.expect("I can't open the pool");
+        let second_nodes = all_nodes(1, 1, &pool).await
+            .expect("Error when fetch 1 node after first");
         assert_eq!(second_nodes.len(), 1);
         let node = second_nodes.iter().nth(0).expect("Fetched 0 nodes, instead of 1");
         assert_eq!(node.title().unwrap(), "mass");
@@ -183,10 +191,11 @@ mod tests {
     #[tokio::test]
     async fn test_nodes_of_tag() {
         use crate::tag::Tag;
-        let tag = Tag::by_name("person")
+        let pool = default_db_pool().await.expect("I can't open the pool");
+        let tag = Tag::by_name("person", &pool)
             .await
             .expect("Error when fetch a tag");
-        let nodes = nodes_of_tag(tag)
+        let nodes = nodes_of_tag(tag, &pool)
             .await
             .expect("Error when fetch nodes of a tag");
         assert_eq!(nodes.len(), 1);
