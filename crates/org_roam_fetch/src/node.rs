@@ -102,31 +102,35 @@ where nodes.id = $1"#;
             None => Err(Error::NodeTitleNotFetched),
         }
     }
-}
 
-pub async fn all_nodes(limit: usize, offset: usize, pool: &SqlitePool) -> Result<Vec<Node>> {
-    sqlx::query_as("SELECT file, title, id FROM nodes LIMIT $1 OFFSET $2")
-        .bind(limit as u32)
-        .bind(offset as u32)
-        .fetch_all(pool).await
-        .map_err(Error::DBError)
-}
+    /// return all nodes that exists in the database.
+    ///
+    /// use limit and offset to concretize amount of expected nodes.
+    pub async fn all_nodes(limit: usize, offset: usize, pool: &SqlitePool) -> Result<Vec<Node>> {
+        sqlx::query_as("SELECT file, title, id FROM nodes LIMIT $1 OFFSET $2")
+            .bind(limit as u32)
+            .bind(offset as u32)
+            .fetch_all(pool).await
+            .map_err(Error::DBError)
+    }
 
-pub async fn nodes_of_tag(tag: Tag, pool: &SqlitePool) -> Result<Vec<Node>> {
-    let q = r#"
+    /// return all nodes, that have a given tag.
+    pub async fn nodes_of_tag(tag: Tag, pool: &SqlitePool) -> Result<Vec<Node>> {
+        let q = r#"
 SELECT file, title, id
 FROM nodes
 WHERE id in (SELECT node_id FROM tags WHERE tag = $1)"#;
-    sqlx::query_as(q)
-        .bind(add_quotes_around(tag.name()))
-        .fetch_all(pool).await
-        .map_err(Error::DBError)
+        sqlx::query_as(q)
+            .bind(add_quotes_around(tag.name()))
+            .fetch_all(pool).await
+            .map_err(Error::DBError)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::connection::default_db_pool;
-    use crate::node::{all_nodes, nodes_of_tag, Node};
+    use crate::node::Node;
 
     #[tokio::test]
     async fn test_node_title() {
@@ -163,8 +167,9 @@ mod tests {
     #[tokio::test]
     async fn test_all_nodes() {
         use crate::tag::Tag;
+
         let pool = default_db_pool().await.expect("I can't open the pool");
-        let nodes = all_nodes(128, 0, &pool).await.expect("Error when fetch all nodes");
+        let nodes = Node::all_nodes(128, 0, &pool).await.expect("Error when fetch all nodes");
         assert_eq!(nodes.len(), 5);
         let titles: Vec<String> = nodes.iter().map(Node::title).map(Result::unwrap).collect();
         assert_eq!(
@@ -182,7 +187,7 @@ mod tests {
     #[tokio::test]
     async fn test_all_nodes_with_offset_and_limit() {
         let pool = default_db_pool().await.expect("I can't open the pool");
-        let second_nodes = all_nodes(1, 1, &pool).await
+        let second_nodes = Node::all_nodes(1, 1, &pool).await
             .expect("Error when fetch 1 node after first");
         assert_eq!(second_nodes.len(), 1);
         let node = second_nodes.iter().nth(0).expect("Fetched 0 nodes, instead of 1");
@@ -196,7 +201,7 @@ mod tests {
         let tag = Tag::by_name("person", &pool)
             .await
             .expect("Error when fetch a tag");
-        let nodes = nodes_of_tag(tag, &pool)
+        let nodes = Node::nodes_of_tag(tag, &pool)
             .await
             .expect("Error when fetch nodes of a tag");
         assert_eq!(nodes.len(), 1);
