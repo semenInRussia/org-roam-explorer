@@ -44,7 +44,10 @@ where nodes.id = $1"#;
         sqlx::query_as(q)
             .bind(add_quotes_around(id))
             .fetch_one(pool).await
-            .map_err(Error::DBError)
+            .map_err(|err| match err {
+                sqlx::error::Error::RowNotFound => Error::NodeNotFound,
+                _ => Error::DBError(err),
+            })
     }
 
     /// return the opened file in which stored a node
@@ -152,12 +155,10 @@ mod tests {
     }
 
     #[tokio::test]
-    #[should_panic(expected = "given a Error::NodeNotFound")]
     async fn test_node_not_found() {
         let pool = default_db_pool().await.expect("I can't open the pool");
-        Node::by_id("undefined id".into(), &pool)
-            .await
-            .expect("given a Error::NodeNotFound");
+        let err = Node::by_id("undefined id".into(), &pool).await;
+        assert!(matches!(err, Err(crate::result::Error::NodeNotFound)));
     }
 
     #[tokio::test]
