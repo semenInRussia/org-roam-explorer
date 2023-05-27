@@ -5,6 +5,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "0.2", features = ["rt-threaded", "macros"] }
-quaint = {version = "0.1.13", features = ["pooled", "sqlite"]}
+tokio = { version = "1.2", features = [ "rt", "macros", "fs", "test-util" ] }
+async-trait = "0.1.66"
 dotenvy = "0.15"
+sqlx = { version = "0.6.1", features = [ "runtime-tokio-rustls", "sqlite" ] }

@@ -1,20 +1,40 @@
-use org_roam_fetch::{tag::Tag, node::all_nodes};
+use org_roam_fetch::{
+    connection::default_db_pool,
+    node::nodes_of_tag,
+    tag::Tag,
+    result::Error
+};
+use inquire::Select;
 
 extern crate org_roam_fetch;
 
 #[tokio::main]
 async fn main() {
-    let tag_name = "sql";
-    let tag = Tag::by_name(tag_name).await.expect("Not found");
+    let pool = default_db_pool().await.expect("Sory.  can't an open DataBase pool");
+    let tags: Vec<String> = Tag::all_tags(&pool).await
+        .expect("Can't explore all tags to do hint")
+        .iter()
+        .map(Tag::name)
+        .collect();
+    let tag_name = Select::new("Choose a tag, pls: ", tags.clone()).prompt()
+        .expect("You didn't choose a tag?");
+    let mut tag = Tag::by_name(tag_name.trim(), &pool).await;
 
-    println!("{:?}", tag.name());
+    while let Err(Error::TagNotFound) = tag {
+        let tag_name = Select::new("> Choose a tag, pls", tags.clone()).prompt()
+            .expect("You didn't choose a tag?");
+        tag = Tag::by_name(tag_name.trim(), &pool).await;
+    }
 
-    let title = all_nodes(128, 0)
-        .await
-        .expect("Nodes not fetched")
-        .first()
-        .expect("Fetched zero nodes")
-        .title();
+    let tag = tag.expect("Can't found your tag, internal error");
 
-    println!("{:?}", title);
+    println!("> Nodes of your tag with name \"{}\":", &tag.name());
+
+    let nodes = nodes_of_tag(tag, &pool).await.expect("I didn't find nodes of your tag?");
+
+    for (i, node) in nodes.iter().enumerate() {
+        println!("{i}. {title}",
+                 i = i + 1,
+                 title = node.title().unwrap());
+    }
 }

@@ -1,112 +1,123 @@
 use std::fs::File;
 
-use crate::connection::db_connection;
+use sqlx::sqlite::SqliteRow;
+use sqlx::{SqlitePool, self, Row};
+
 use crate::result::{Error, Result};
 use crate::tag::Tag;
 use crate::utils::{add_quotes_around, remove_quotes_around};
-use quaint::prelude::*;
+
+/// ID of a node
+pub type ID = String;
 
 // NOTE: I am not use columns from the table Node which for me useless
 #[derive(Debug, Clone)]
 pub struct Node {
-    /// the identifier of the node.  This is value of propertry ID in the node `org-mode` heading
-    id: Option<String>,
-    /// the title of the node.  This is a title of the `org-mode` heading
+    /// the identifier of a node.  This is the value of the propertry ID in an `org-mode` heading
+    id: Option<ID>,
+    /// the title of a node.  This is the title of the `org-mode` heading which refered by node
     title: Option<String>,
-    /// name of the file in which stored `org-mode` with the node
+    /// name of the file in which stored a node
     filename: Option<String>,
     /// list of the node's tags
     tags: Option<Vec<Tag>>,
 }
 
-impl From<&ResultRow> for Node {
-    fn from(row: &ResultRow) -> Self {
-        let id = row["id"].clone().into_string();
-        let title = row["title"].clone().into_string();
-        let filename = row["file"].clone().into_string();
-        Node {
-            id,
-            title,
-            filename,
-            tags: None,
-        }
+impl<'a> sqlx::FromRow<'a, SqliteRow> for Node {
+    fn from_row(row: &'a SqliteRow) -> std::result::Result<Self, sqlx::Error> {
+        let node = Self {
+            id: row.try_get("id").ok(),
+            title: row.try_get("title").ok(),
+            filename: row.try_get("file").ok(),
+            tags: None
+        };
+        Ok(node)
     }
 }
 
 impl Node {
-    pub async fn by_id(id: &str) -> Result<Self> {
-        let tags = "tags".alias("t");
-        let query = Select::from_table("nodes")
-            .inner_join(tags.on(("t", "node_id").equals(col!("nodes", "id"))))
-            .and_where(col!("nodes", "id").equals(add_quotes_around(id)))
-            .columns(["id", "title", "file", "tag"]);
-        let rows: &Vec<ResultRow> = &db_connection()
-            .await?
-            .select(query)
-            .await?
-            .into_iter()
-            .collect();
-        let mut node = rows.first().map(Node::from).ok_or(Error::NodeNotFound)?;
-        let tags = rows.iter().map(Tag::from).collect();
-        node.tags = Some(tags);
-        Ok(node)
+    /// create a `Node` instance that referes to the `org-roam` node with a given ID
+    pub async fn by_id(id: ID, pool: &SqlitePool) -> Result<Self> {
+        let q = r#"
+SELECT id, title, file from nodes
+where nodes.id = $1"#;
+        sqlx::query_as(q)
+            .bind(add_quotes_around(id))
+            .fetch_one(pool).await
+            .map_err(Error::DBError)
     }
 
+    /// return the opened file in which stored a node
     pub fn file(&self) -> Result<File> {
         File::open(self.filename()?).map_err(Error::NodeFileOpenError)
     }
 
+    /// return the path to the file in which stored a node
+    ///
+    /// if the filename isn't provided, return `Error::NodeFileNameNotFetched`
     pub fn filename(&self) -> Result<String> {
         self.filename
-            .clone()
+            .as_ref()
             .map(remove_quotes_around)
+            .map(ToOwned::to_owned)
             .ok_or(Error::NodeFileNameNotFetched)
     }
 
-    pub async fn tags(&self) -> Result<Vec<Tag>> {
+    /// returns the vector of tags of a node in `Result` container.
+    ///
+    /// if the tags didn't fetched, returns `result::Error`
+    pub async fn tags(&self, pool: &SqlitePool) -> Result<Vec<Tag>> {
         if let Some(tgs) = &self.tags {
-            return Ok(tgs.to_vec());
+            return Ok(tgs.to_owned());
         }
-        let query = Select::from_table("tags")
-            .column("tag")
-            .and_where("node_id".equals(add_quotes_around(&self.id()?)));
-        let tags: Vec<Tag> = select_in_db!(query);
-        Ok(tags)
+        let q = "select tag from tags where node_id = $1";
+        sqlx::query_as(q)
+            .bind(add_quotes_around(self.id.as_ref().ok_or(Error::TagNotFound)?))
+            .fetch_all(pool).await
+            .map_err(Error::DBError)
     }
 
+    /// return the ID of a node which consists of 5 parts separated with dash.
+    ///
+    /// If ID isn't provided, return `Error::NodeIdNotFetched`.
+    /// Example of a ID: "5f55037f-3e25-448b-97f2-65efd258265c".
     pub fn id(&self) -> Result<String> {
         self.id
-            .clone()
+            .as_ref()
             .map(remove_quotes_around)
+            .map(ToOwned::to_owned)
             .ok_or(Error::NodeIdNotFetched)
     }
 
+    /// return the title of a node in `Result` container.
+    ///
+    /// If the title isn't provided, return `Error::NodeTitleNotFetched`
     pub fn title(&self) -> Result<String> {
         self.title
-            .clone()
+            .as_ref()
             .map(remove_quotes_around)
+            .map(ToOwned::to_owned)
             .ok_or(Error::NodeTitleNotFetched)
     }
 }
 
-pub async fn all_nodes(limit: usize, offset: usize) -> Result<Vec<Node>> {
-    let query = Select::from_table("nodes")
-        .columns(["file", "title", "id"])
-        .offset(offset)
-        .limit(limit);
-    let nodes = select_in_db!(query);
-    Ok(nodes)
+pub async fn all_nodes(limit: usize, offset: usize, pool: &SqlitePool) -> Result<Vec<Node>> {
+    sqlx::query_as("SELECT file, title, id FROM nodes OFFSET $1 LIMIT $2")
+        .bind(offset as u32)
+        .bind(limit as u32)
+        .fetch_all(pool).await
+        .map_err(Error::DBError)
 }
 
-pub async fn nodes_of_tag(tag: Tag) -> Result<Vec<Node>> {
-    let node_ids_of_tag = Select::from_table("tags")
-        .and_where("tag".equals(add_quotes_around(tag.name())))
-        .column("node_id");
-    let query = Select::from_table("nodes")
-        .and_where("id".in_selection(node_ids_of_tag))
-        .columns(["file", "title", "id"]);
-    let nodes: Vec<Node> = select_in_db!(query);
-    Ok(nodes)
+pub async fn nodes_of_tag(tag: Tag, pool: &SqlitePool) -> Result<Vec<Node>> {
+    let q = r#"
+SELECT file, title, id
+FROM nodes
+WHERE id in (SELECT node_id FROM tags WHERE tag = $1)"#;
+    sqlx::query_as(q)
+        .bind(add_quotes_around(tag.name()))
+        .fetch_all(pool).await
+        .map_err(Error::DBError)
 }
 
 #[cfg(test)]
@@ -115,7 +126,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_node_title() {
-        let node = Node::by_id("1")
+        let node = Node::by_id("1".into())
             .await
             .expect("Node with available id not found");
         assert_eq!(node.title().unwrap(), "momentum");
@@ -123,7 +134,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_node_filename() {
-        let node = Node::by_id("1")
+        let node = Node::by_id("1".into())
             .await
             .expect("Node with available id not found");
         assert_eq!(node.filename().unwrap(), "org-roam/momentum.org");
@@ -132,14 +143,14 @@ mod tests {
     #[tokio::test]
     async fn test_node_tags() {
         use crate::tag::Tag;
-        let node = Node::by_id("1").await.expect("Error when fetch a node");
+        let node = Node::by_id("1".into()).await.expect("Error when fetch a node");
         assert_eq!(node.tags().await.unwrap(), vec![Tag::new("\"physics\"")]);
     }
 
     #[tokio::test]
     #[should_panic(expected = "given a Error::NoteNotFound")]
     async fn test_node_not_found() {
-        Node::by_id("undefined id")
+        Node::by_id("undefined id".into())
             .await
             .expect("given a Error::NoteNotFound");
     }

@@ -1,34 +1,25 @@
-use quaint::{connector::ResultRow, prelude::*};
+use sqlx::{self, SqlitePool};
 
-use crate::connection::db_connection;
-use crate::result::{Error, Result};
+use crate::result::{Result, Error};
+
 use crate::utils::{add_quotes_around, remove_quotes_around};
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(sqlx::FromRow, Debug, PartialEq, Clone)]
 pub struct Tag {
+    #[sqlx(rename = "tag")]
     name: String,
 }
 
-impl From<&ResultRow> for Tag {
-    fn from(row: &ResultRow) -> Self {
-        row["tag"]
-            .clone()
-            .into_string()
-            .map(Tag::new)
-            .expect("A given row of the table `tags` hasn't column `tag`")
-    }
-}
-
 impl Tag {
-    pub async fn by_name(name: &str) -> Result<Self> {
-        let query = Select::from_table("tags")
-            .column("tag")
-            .and_where("tag".equals(add_quotes_around(name)));
-        select_first_in_db!(query).ok_or(Error::TagNotFound)
+    pub async fn by_name(name: &str, pool: &SqlitePool) -> Result<Self> {
+        sqlx::query_as("SELECT tag FROM tags WHERE tag = $1")
+            .bind(add_quotes_around(name))
+            .fetch_one(pool).await
+            .map_err(Error::DBError)
     }
 
     pub fn name(&self) -> String {
-        remove_quotes_around(self.name.clone())
+        remove_quotes_around(&self.name).to_owned()
     }
 
     pub fn new<T>(name: T) -> Self
@@ -36,6 +27,12 @@ impl Tag {
         T: Into<String>,
     {
         Tag { name: name.into() }
+    }
+
+    pub async fn all_tags(pool: &SqlitePool) -> Result<Vec<Self>> {
+        sqlx::query_as("SELECT DISTINCT tag FROM tags")
+            .fetch_all(pool).await
+            .map_err(Error::DBError)
     }
 }
 
@@ -45,8 +42,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tag_name() {
-        let tag = Tag::by_name("physics")
-            .await
+        let tag = Tag::by_name("physics").await
             .expect("Error when fetch a tag");
         assert_eq!(tag.name(), "physics");
     }
