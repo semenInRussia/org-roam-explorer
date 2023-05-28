@@ -1,14 +1,11 @@
 use tokio::fs::File;
 
-use sqlx::sqlite::SqliteRow;
-use sqlx::{SqlitePool, self, Row};
+use sqlx::{self, Row, SqlitePool, sqlite::SqliteRow};
 
+use crate::id::ID;
 use crate::result::{Error, Result};
 use crate::tag::Tag;
 use crate::utils::{add_quotes_around, remove_quotes_around};
-
-/// ID of a node
-pub type ID = String;
 
 // NOTE: I am not use columns from the table Node which for me useless
 #[derive(Debug, Clone)]
@@ -125,6 +122,21 @@ WHERE id in (SELECT node_id FROM tags WHERE tag = $1)"#;
             .fetch_all(pool).await
             .map_err(Error::DBError)
     }
+
+    pub async fn refers_to(&self, pool: &SqlitePool) -> Result<Vec<Node>> {
+        let id = self.id
+            .as_ref()
+            .ok_or(Error::NodeIdNotFetched)?;
+        let q = format!(r#"
+SELECT id, file, title
+FROM nodes AS n
+JOIN links AS l
+ON n.id = l.source
+WHERE l.dest = '"{}"'"#, &id);
+        sqlx::query_as(&q)
+            .fetch_all(pool).await
+            .map_err(Error::DBError)
+    }
 }
 
 #[cfg(test)]
@@ -172,10 +184,8 @@ mod tests {
         let nodes = Node::all_nodes(128, 0, &pool).await.expect("Error when fetch all nodes");
         assert_eq!(nodes.len(), 5);
         let titles: Vec<String> = nodes.iter().map(Node::title).map(Result::unwrap).collect();
-        assert_eq!(
-            titles,
-            vec!["momentum", "mass", "si", "Second Law of Newton", "newton"]
-        );
+        assert_eq!(titles,
+                   vec!["momentum", "mass", "si", "Second Law of Newton", "newton"]);
         let momentum = nodes.into_iter().nth(0).unwrap();
         // fails
         assert_eq!(
@@ -187,8 +197,8 @@ mod tests {
     #[tokio::test]
     async fn test_all_nodes_with_offset_and_limit() {
         let pool = default_db_pool().await.expect("I can't open the pool");
-        let second_nodes = Node::all_nodes(1, 1, &pool).await
-            .expect("Error when fetch 1 node after first");
+        let second_nodes =
+            Node::all_nodes(1, 1, &pool).await.expect("Error when fetch 1 node after first");
         assert_eq!(second_nodes.len(), 1);
         let node = second_nodes.iter().nth(0).expect("Fetched 0 nodes, instead of 1");
         assert_eq!(node.title().unwrap(), "mass");
@@ -198,17 +208,24 @@ mod tests {
     async fn test_nodes_of_tag() {
         use crate::tag::Tag;
         let pool = default_db_pool().await.expect("I can't open the pool");
-        let tag = Tag::by_name("person", &pool)
-            .await
-            .expect("Error when fetch a tag");
+        let tag =
+            Tag::by_name("person", &pool).await.expect("Error when fetch a tag");
         let nodes = Node::nodes_of_tag(tag, &pool)
             .await
             .expect("Error when fetch nodes of a tag");
         assert_eq!(nodes.len(), 1);
-        let nodes_titles: Vec<String> = nodes.iter()
-            .map(Node::title)
-            .map(Result::unwrap)
-            .collect();
+        let nodes_titles: Vec<String> =
+            nodes.iter().map(Node::title).map(Result::unwrap).collect();
         assert_eq!(nodes_titles, vec!["newton"]);
+    }
+
+    #[tokio::test]
+    async fn test_node_refers_to() {
+        let pool = default_db_pool().await.expect("I can't open the pool");
+        let second_newton_law = Node::by_id("4".to_string(), &pool).await.unwrap();
+        let childs = second_newton_law.refers_to(&pool).await.unwrap();
+        let childs_names: Vec<String> =
+            childs.iter().map(Node::title).map(Result::unwrap).collect();
+        assert_eq!(childs_names, ["newton"]);
     }
 }
