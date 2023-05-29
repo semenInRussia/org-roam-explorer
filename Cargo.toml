@@ -5,8 +5,12 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-path = "crates/main.rs"
-name = "main"
+path = "./crates/bin/tags.rs"
+name = "oroam-tags"
+
+[[bin]]
+path = "./crates/bin/nodes_by_title.rs"
+name = "oroam-nodes"
 
 [dependencies.org_roam_fetch]
 path = "crates/org_roam_fetch"
