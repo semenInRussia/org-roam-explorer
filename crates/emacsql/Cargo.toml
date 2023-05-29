@@ -1,0 +1,8 @@
+[package]
+authors = ["semenInRussia"]
+name = "emacsql"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rusqlite = "0.29.0"
