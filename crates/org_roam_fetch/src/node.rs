@@ -164,11 +164,31 @@ WHERE id in (SELECT node_id FROM tags WHERE tag = $1)"#;
         let id = self.id.as_ref().ok_or(Error::NodeIdNotFetched)?;
         let q = format!(
             r#"
-SELECT id, file, title
-FROM nodes AS n
-JOIN links AS l
-ON n.id = l.source
-WHERE l.dest = '"{}"'"#,
+SELECT id, title, file
+FROM links AS l
+JOIN nodes AS n
+ON l.dest = n.id
+WHERE l.source = '"{}"'
+"#,
+            &id
+        );
+        sqlx::query_as(&q)
+            .fetch_all(pool)
+            .await
+            .map_err(Error::DBError)
+    }
+
+    /// returns the vector of nodes that refers to the current node
+    pub async fn backlinks(&self, pool: &SqlitePool) -> Result<Vec<Node>> {
+        let id = self.id.as_ref().ok_or(Error::NodeIdNotFetched)?;
+        let q = format!(
+            r#"
+SELECT id, title, file
+FROM links AS l
+JOIN nodes AS n
+ON l.source = n.id
+WHERE l.dest = '"{}"'
+"#,
             &id
         );
         sqlx::query_as(&q)
@@ -233,7 +253,7 @@ mod tests {
             vec!["momentum", "mass", "si", "Second Law of Newton", "newton"]
         );
         let momentum = nodes.into_iter().nth(0).unwrap();
-        // fails
+
         assert_eq!(
             momentum
                 .tags(&pool)
@@ -275,11 +295,24 @@ mod tests {
     #[tokio::test]
     async fn test_node_refers_to() {
         let pool = default_db_pool().await.expect("I can't open the pool");
-        let second_newton_law = Node::by_id("4".to_string(), &pool).await.unwrap();
-        let childs = second_newton_law.refers_to(&pool).await.unwrap();
+        let newton = Node::by_id("5".to_string(), &pool).await.unwrap();
+        let childs = newton.refers_to(&pool).await.unwrap();
         let childs_names: Vec<String> =
             childs.iter().map(Node::title).map(Result::unwrap).collect();
-        assert_eq!(childs_names, ["newton"]);
+        assert_eq!(childs_names, ["Second Law of Newton"]);
+    }
+
+    #[tokio::test]
+    async fn test_node_backlinks() {
+        let pool = default_db_pool().await.expect("I can't open the pool");
+        let newton = Node::by_id("5".to_string(), &pool).await.unwrap();
+        let parents = newton.backlinks(&pool).await.unwrap();
+        let parents_names: Vec<String> = parents
+            .iter()
+            .map(Node::title)
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(parents_names, ["Second Law of Newton"]);
     }
 
     #[tokio::test]

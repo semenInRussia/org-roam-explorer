@@ -1,6 +1,6 @@
-use sqlx::{self, SqlitePool, Row, sqlite::SqliteRow};
+use sqlx::{self, sqlite::SqliteRow, Row, SqlitePool};
 
-use crate::result::{Result, Error};
+use crate::result::{Error, Result};
 
 use crate::utils::{add_quotes_around, remove_quotes_around};
 
@@ -27,7 +27,8 @@ impl Tag {
     pub async fn by_name(name: &str, pool: &SqlitePool) -> Result<Self> {
         sqlx::query_as("SELECT tag FROM tags WHERE tag = $1")
             .bind(add_quotes_around(name))
-            .fetch_one(pool).await
+            .fetch_one(pool)
+            .await
             .map_err(|err| match err {
                 sqlx::error::Error::RowNotFound => Error::TagNotFound,
                 _ => Error::DBError(err),
@@ -40,7 +41,8 @@ impl Tag {
 
     pub async fn all_tags(pool: &SqlitePool) -> Result<Vec<Self>> {
         sqlx::query_as("SELECT DISTINCT tag FROM tags")
-            .fetch_all(pool).await
+            .fetch_all(pool)
+            .await
             .map_err(Error::DBError)
     }
 }
@@ -48,12 +50,13 @@ impl Tag {
 #[cfg(test)]
 mod tests {
     use crate::connection::default_db_pool;
-    use crate::{tag::Tag, result::Error};
+    use crate::{result::Error, tag::Tag};
 
     #[tokio::test]
     async fn test_tag_name() {
         let pool = default_db_pool().await.expect("I can't open the pool");
-        let tag = Tag::by_name("physics", &pool).await
+        let tag = Tag::by_name("physics", &pool)
+            .await
             .expect("Error when fetch a tag");
         assert_eq!(tag.name(), "physics");
     }
