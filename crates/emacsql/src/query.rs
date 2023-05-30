@@ -13,7 +13,7 @@ impl<'a> QueryAs for rusqlite::Statement<'a> {
     fn query_as_one<P: Params, T: FromRow>(&mut self, params: P) -> Result<T> {
         self.query(params)?
             .next()?
-            .ok_or(Error::RowNotFound)
+            .ok_or(Error::QueryReturnedNoRows)
             .map(Row::from) // converts rusqlite Row to emacsql Row
             .and_then(|r| T::try_from_row(&r))
     }

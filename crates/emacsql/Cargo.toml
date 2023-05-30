@@ -6,3 +6,7 @@ edition = "2021"
 
 [dependencies]
 rusqlite = "0.29.0"
+
+[[bin]]
+path = "src/main.rs"
+name = "main"

@@ -1,33 +1,35 @@
-use std::str::FromStr;
-
 use rusqlite;
 
 use crate::error::Error;
 use crate::prelude::*;
-use crate::utils::remove_quotes_around;
-
-pub trait FromEmacsql: Sized {
-    fn try_from_sqlite_str(s: String) -> Result<Self>;
-}
-
-impl<T: FromStr> FromEmacsql for T {
-    fn try_from_sqlite_str(s: String) -> Result<Self> {
-        s.parse().or(Err(Error::InvalidColumnType))
-    }
-}
+use crate::value::FromEmacsql;
 
 pub struct Row<'a> {
     row: &'a rusqlite::Row<'a>,
 }
 
 impl<'a> Row<'a> {
-    pub fn get<I: rusqlite::RowIndex, T: FromEmacsql>(&self, idx: I) -> Result<T> {
-        self.row
-            .get(idx)
-            .map_err(Error::from)
-            .map(remove_quotes_around::<String, String>)
-            .and_then(FromEmacsql::try_from_sqlite_str)
-            .or(Err(Error::InvalidColumnType))
+    // TODO: change it, using only from_sql, to_sql
+    // here I shouldn't see `remove_quotes_around`
+    pub fn get<I: RowIndex + Clone, T: FromEmacsql>(&self, idx: I) -> Result<T> {
+        let eql = self.row.get(idx.clone())?;
+        T::from_emacsql(eql).map_err(|_| idx.as_invalid())
+    }
+}
+
+pub trait RowIndex: rusqlite::RowIndex {
+    fn as_invalid(&self) -> Error;
+}
+
+impl RowIndex for &'_ str {
+    fn as_invalid(&self) -> Error {
+        Error::InvalidColumnName(self.to_string())
+    }
+}
+
+impl RowIndex for usize {
+    fn as_invalid(&self) -> Error {
+        Error::InvalidColumnIndex(*self)
     }
 }
 
