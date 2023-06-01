@@ -90,6 +90,7 @@ enum ListType {
 }
 
 impl ListType {
+    /// Try guess the type of list by the its opening paren.
     fn from_open(op: char) -> Option<Self> {
         match op {
             '(' => Some(Self::List),
@@ -98,6 +99,7 @@ impl ListType {
         }
     }
 
+    /// Returns the opening parenthesis of this [`ListType`].
     fn open(&self) -> char {
         match self {
             Self::List => '(',
@@ -105,6 +107,7 @@ impl ListType {
         }
     }
 
+    /// Returns the closing parenthesis of this [`ListType`].
     fn close(&self) -> char {
         match self {
             Self::List => ')',
@@ -158,7 +161,7 @@ impl<'a> Parser<'a> {
             '[' | '(' => return self.parse_list_or_cons().into(),
             '.' => return Event::ErrorHappened(Error::UnexpectedDot),
             ')' | ']' => return Event::ErrorHappened(Error::UnbalancedExpr),
-            ch => return self.parse_symbol().into(),
+            _ => return self.parse_symbol().into(),
         }
     }
 
@@ -181,22 +184,24 @@ impl<'a> Parser<'a> {
     fn parse_string(&mut self) -> Result<Value> {
         assert_eq!(self.ch(), Some('"'));
         self.chop(1);
-        let beg = self.cursor;
-        // TODO: check backslashes
-        self.chop_away_next_quote();
-        let end = self.cursor - 1;
-        if self.src[end] != '"' as u8 {
-            Err(Error::UnbalancedExpr)
-        } else {
-            Ok(Value::String(
-                String::from_utf8(self.src[beg..end].to_vec()).unwrap(),
-            ))
+        let mut str = String::new();
+        loop {
+            match self.ch().ok_or(Error::UnbalancedExpr)? {
+                '"' => {
+                    self.chop(1);
+                    break;
+                }
+                '\\' => {
+                    self.chop(1);
+                    str.push(escape_char(self.chop_ch().ok_or(Error::UnbalancedExpr)?));
+                }
+                ch => {
+                    str.push(ch);
+                    self.chop(1);
+                }
+            }
         }
-    }
-
-    fn chop_away_next_quote(&mut self) {
-        self.chop_while(|ch| ch != '"');
-        self.chop(1);
+        Ok(Value::String(str))
     }
 
     fn parse_list_or_cons(&mut self) -> Result<Value> {
@@ -214,16 +219,13 @@ impl<'a> Parser<'a> {
                 break;
             } else if ch == Some('.') {
                 self.chop(1);
-                let mut car = if lst.len() == 1 {
+                let car = if lst.len() == 1 {
                     lst[0].clone()
                 } else {
                     Value::List(lst)
                 };
                 let cdr = self.next_parsed().or(Err(Error::UnexpectedDot))?;
-                return Ok(Value::Cons(
-                    Box::new(car),
-                    Box::new(cdr)
-                ));
+                return Ok(Value::Cons(Box::new(car), Box::new(cdr)));
             }
             let ev = self.next_event();
             match ev {
@@ -296,6 +298,12 @@ impl<'a> Parser<'a> {
         self.cursor += n;
     }
 
+    fn chop_ch(&mut self) -> Option<char> {
+        let res = self.ch();
+        self.chop(1);
+        res
+    }
+
     fn substr(&mut self, beg: usize, end: usize) -> String {
         String::from_utf8(self.src[beg..end].to_vec()).unwrap()
     }
@@ -318,6 +326,16 @@ fn is_identifier_char(ch: char) -> bool {
         || ch == '.'
         || ch == '"'
         || ch == '\'')
+}
+
+fn escape_char(ch: char) -> char {
+    match ch {
+        '"' => '"',
+        'n' => '\n',
+        't' => '\t',
+        ch if ch.is_numeric() => ('\0' as u8 + ch.to_digit(10).unwrap() as u8) as char,
+        _ => ch,
+    }
 }
 
 mod tests {
@@ -405,18 +423,14 @@ mod tests {
             )
         );
     }
-    
-    
+
     #[test]
     fn test_parse_cons_from_2values() {
         let src = "(1 . 2)";
         let res: Value = src.parse().unwrap();
         assert_eq!(
             res,
-            Value::Cons(
-                Box::new(Value::Integer(1)),
-                Box::new(Value::Integer(2))
-            )
+            Value::Cons(Box::new(Value::Integer(1)), Box::new(Value::Integer(2)))
         );
     }
 
@@ -435,12 +449,20 @@ mod tests {
     }
 
     #[test]
+    fn test_string_with_escaping() {
+        //' baba"papa '
+        let src = "\" baba\\\"papa \" ";
+        let res: Value = src.parse().unwrap();
+        assert_eq!(res, Value::String(" baba\"papa ".to_string()));
+    }
+
+    #[test]
     fn test_unbalanced_expr() {
         let src = " ( jdeidje ] )";
         let actual = src.parse::<Value>().unwrap_err();
         assert_eq!(actual, Error::UnbalancedExpr)
     }
-    
+
     #[test]
     fn test_unbalanced_list_with_paren_at_end() {
         let src = " ( jdeidje ";
