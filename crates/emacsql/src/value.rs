@@ -1,17 +1,23 @@
 use std::str::FromStr;
 
-use crate::{error::FromEmacsqlError, utils::maybe_remove_quotes_around};
-// use crate::utils::{add_quotes_around, remove_quotes_around};
-
-// use std::ops::{ControlFlow, FromResidual, Try};
+use crate::error::FromEmacsqlError;
+use crate::lisp;
 
 use rusqlite::{
     self,
     types::{FromSql, FromSqlError},
 };
 
+// look up `emacsql-type-map` in the emacs editor to check available types of
+// EmacSQL types.
+
+// In emacsql README.md you could readed that every value in emacsql database will represents as
+// string or null, but is myth.  Emacsql also represents numbers and floats with respective types
+
 pub enum Value {
-    Lisp(String),
+    Lisp(lisp::Value),
+    Integer(i64),
+    Real(f64),
     Null,
 }
 
@@ -30,24 +36,12 @@ impl FromSql for Value {
 
         match value {
             Null => Ok(Self::Null),
-            Text(s) => Ok(Self::Lisp(String::from_utf8(s.to_vec()).unwrap())),
-            // In EmacSQL value cannot be a integer, it's only a text that represents an Emacs lisp or Null that represents nil")
-            Blob(_) | Real(_) | Integer(_) => Err(FromSqlError::InvalidType),
-        }
-    }
-}
-
-impl From<rusqlite::types::Value> for Value {
-    fn from(val: rusqlite::types::Value) -> Self {
-        use rusqlite::types::Value::*;
-
-        match val {
-            Null => Self::Null,
-            Text(s) => Self::Lisp(s),
-            Real(_) | Integer(_) => {
-                unreachable!("in emacsql every value is either string that represents emacs lisp value or Null (nil)")
-            }
-            _ => unreachable!(),
+            Text(s) => Ok(Self::Lisp(std::str::from_utf8(s).unwrap().parse()?)),
+            // In EmacSQL value cannot be a integer, it's only a text that represents an
+            // Emacs lisp or Null that represents nil
+            Real(n) => Ok(Self::Real(n)),
+            Integer(n) => Ok(Self::Integer(n)),
+            Blob(_) => unreachable!("Blob can be represented in EmacSQL database"),
         }
     }
 }
@@ -66,43 +60,93 @@ impl<T: FromEmacsql> FromEmacsql for Option<T> {
     }
 }
 
-pub trait FromLisp: Sized {
-    fn from_lisp(s: String) -> FromEmacsqlResult<Self>;
-}
-
-impl FromLisp for String {
-    fn from_lisp(s: String) -> FromEmacsqlResult<Self> {
-        Ok(maybe_remove_quotes_around(s))
+impl FromEmacsql for bool {
+    fn from_emacsql(val: Value) -> FromEmacsqlResult<Self> {
+        match val {
+            Value::Null => Ok(false),
+            Value::Lisp(lisp::Value::String(s)) if s == "t" => Ok(true),
+            _ => {
+                if let Value::Lisp(sexp) = val {
+                    println!("try convert lisp value: {:?} to bool", sexp);
+                }
+                Err(FromEmacsqlError::InvalidType)
+            }
+        }
     }
 }
 
-// impl<I: FromLisp> FromLisp for Vec<I> {}
+macro_rules! some_integer_impls {
+    ($( $for:ident ),*) => {
+        $(
+            impl FromEmacsql for $for {
+                fn from_emacsql(val: Value) -> FromEmacsqlResult<Self> {
+                    match val {
+                        Value::Integer(n) => Ok(n as $for),
+                        _ => Err(FromEmacsqlError::InvalidType),
+                    }
+                }
+            }
+        )*
+    };
+}
+
+some_integer_impls![i8, i16, i32, i64, usize];
+
+macro_rules! some_real_impls {
+    ($( $for:ident ),*) => {
+        $(
+            impl FromEmacsql for $for {
+                fn from_emacsql(val: Value) -> FromEmacsqlResult<Self> {
+                    match val {
+                        Value::Real(n) => Ok(n as $for),
+                        _ => Err(FromEmacsqlError::InvalidType),
+                    }
+                }
+            }
+        )*
+    };
+}
+
+some_real_impls![f32, f64];
+
+pub trait FromLisp: Sized {
+    fn from_lisp(s: lisp::Value) -> FromEmacsqlResult<Self>;
+}
 
 impl<T: FromLisp> FromEmacsql for T {
     fn from_emacsql(val: Value) -> FromEmacsqlResult<Self> {
         match val {
-            Value::Null => Err(FromEmacsqlError::InvalidType),
             Value::Lisp(s) => T::from_lisp(s).or(Err(FromEmacsqlError::InvalidType)),
+            _ => Err(FromSqlError::InvalidType),
+        }
+    }
+}
+
+impl FromLisp for String {
+    fn from_lisp(sexp: lisp::Value) -> FromEmacsqlResult<Self> {
+        match sexp {
+            lisp::Value::String(s) => Ok(s),
+            _ => Err(FromEmacsqlError::InvalidType),
         }
     }
 }
 
 pub trait FromLispAsFromStr: Sized + FromStr {}
 
+// TODO: implement `FromLisp` for lisp list and vector
+// impl<T: FromLisp> FromLisp for Vec<T> {
+//     fn from_lisp(s: String) -> FromEmacsqlResult<Self> {
+//         match parse_lisp_program(&s) {
+//             Ok(LispObject::)
+//         }
+//     }
+// }
+
 impl<T: FromLispAsFromStr> FromLisp for T {
-    fn from_lisp(s: String) -> FromEmacsqlResult<Self> {
-        s.parse().or(Err(FromEmacsqlError::InvalidType))
+    fn from_lisp(sexp: lisp::Value) -> FromEmacsqlResult<Self> {
+        match sexp {
+            lisp::Value::String(s) => s.parse().or(Err(FromEmacsqlError::InvalidType)),
+            _ => Err(FromEmacsqlError::InvalidType),
+        }
     }
 }
-
-impl FromLispAsFromStr for u8 {}
-impl FromLispAsFromStr for u16 {}
-impl FromLispAsFromStr for u32 {}
-impl FromLispAsFromStr for u64 {}
-impl FromLispAsFromStr for i8 {}
-impl FromLispAsFromStr for i16 {}
-impl FromLispAsFromStr for i32 {}
-impl FromLispAsFromStr for i64 {}
-impl FromLispAsFromStr for f32 {}
-impl FromLispAsFromStr for f64 {}
-impl FromLispAsFromStr for usize {}

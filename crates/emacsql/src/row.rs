@@ -9,8 +9,6 @@ pub struct Row<'a> {
 }
 
 impl<'a> Row<'a> {
-    // TODO: change it, using only from_sql, to_sql
-    // here I shouldn't see `remove_quotes_around`
     pub fn get<I: RowIndex + Clone, T: FromEmacsql>(&self, idx: I) -> Result<T> {
         let eql = self.row.get(idx.clone())?;
         T::from_emacsql(eql).map_err(|_| idx.as_invalid())

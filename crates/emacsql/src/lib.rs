@@ -2,6 +2,7 @@
 
 extern crate rusqlite;
 pub mod error;
+pub mod lisp;
 pub mod params;
 pub mod prelude;
 pub mod query;

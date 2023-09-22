@@ -1,40 +1,40 @@
-use emacsql::{Error, FromRow, QueryAs, Result, Row, Value};
+use emacsql::{Error, FromRow, QueryAs, Result, Row};
 use rusqlite::Connection;
 
-use std::env;
-
 #[derive(Debug)]
-struct Node {
+struct Repository {
     id: String,
-    title: String,
-    // pos: Option<u32>,
+    class: String,
+    forge: Option<String>,
+    forge_id: Option<String>,
+    sparse_p: Option<bool>,
+    stars: Option<usize>,
 }
 
-impl FromRow for Node {
+impl FromRow for Repository {
     fn try_from_row(row: &Row) -> Result<Self> {
-        let node = Self {
+        let rep = Self {
             id: row.get("id")?,
-            title: row.get("title")?,
-            // pos: row.get("pos")?,
+            class: row.get("class")?,
+            forge: row.get("forge")?,
+            forge_id: row.get("forge_id")?,
+            sparse_p: row.get("sparse_p")?,
+            stars: row.get("stars")?,
         };
-        println!("i try convert a {} to Node", &node.title);
-        Ok(node)
+        Ok(rep)
     }
 }
 
 fn main() {
-    let filename = env::var("ORG_ROAM_DB_FILE").unwrap();
+    let filename = "c:/Users/hrams/AppData/Roaming/.emacs.d/forge-database.sqlite";
     let conn = Connection::open(filename).unwrap();
-    let mut nodes_q = conn
-        .prepare("SELECT * FROM nodes WHERE title = ?1")
-        .unwrap();
-    let node: Result<Node> = nodes_q.query_as_one(["\"Smoodin\""]);
+    let mut repos_q = conn.prepare("SELECT * FROM repository").unwrap();
+    let repo: Result<Repository> = repos_q.query_as_one([]);
 
-    match node {
-        Ok(node) => {
-            println!("found! ID is {id}", id = node.id);
+    match repo {
+        Ok(repo) => {
+            println!("found! repo is {repo:#?}");
         }
-        // Err::
         Err(Error::QueryReturnedNoRows) => {
             println!("not found...:()");
         }
@@ -42,7 +42,4 @@ fn main() {
             println!("{err:?}");
         }
     }
-
-    let mut nodes = nodes_q.query(["\"Smoodin\""]);
-    println!("{:?}", nodes.unwrap().next());
 }

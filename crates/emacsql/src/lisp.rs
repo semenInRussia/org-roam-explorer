@@ -15,9 +15,52 @@ pub enum Value {
 impl Value {
     fn text(self) -> Option<String> {
         match self {
+            Self::Symbol(s) | Self::String(s) => Some(s),
+            // Self::Symbol(s) => Some(s),
+            // Self::String(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn as_symbol(self) -> Option<String> {
+        match self {
             Self::Symbol(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn as_string(self) -> Option<String> {
+        match self {
             Self::String(s) => Some(s),
             _ => None,
+        }
+    }
+
+    pub fn as_integer(self) -> Option<i64> {
+        match self {
+            Self::Integer(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    pub fn as_real(self) -> Option<f64> {
+        match self {
+            Self::Real(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    pub fn as_list(self) -> Option<Vec<Value>> {
+        match self {
+            Self::List(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    pub fn is_nil(self) -> bool {
+        match self {
+            Self::Nil => true,
+            _ => false,
         }
     }
 }
@@ -145,11 +188,11 @@ impl<'a> Parser<'a> {
     }
 
     fn next_event(&mut self) -> Event {
-        let ch = self.ch();
-        if ch.is_none() {
+        if self.ch().is_none() {
             return Event::End;
         }
-        let ch = ch.unwrap();
+
+        let ch = self.ch().unwrap();
 
         match ch {
             ch if ch.is_whitespace() => {

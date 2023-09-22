@@ -1,9 +1,7 @@
-use sqlx;
-
 #[derive(Debug)]
 pub enum Error {
     /// an error with database
-    DBError(sqlx::error::Error),
+    DBError(emacsql::error::Error),
     /// a node (`Node`) isn't found in the database
     NodeNotFound,
     /// opening a node file (`Node`) doesn't work
@@ -24,8 +22,8 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl From<sqlx::error::Error> for Error {
-    fn from(value: sqlx::error::Error) -> Self {
+impl From<emacsql::error::Error> for Error {
+    fn from(value: emacsql::error::Error) -> Self {
         Error::DBError(value)
     }
 }

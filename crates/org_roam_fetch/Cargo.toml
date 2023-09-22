@@ -4,8 +4,9 @@ name = "org_roam_fetch"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies.emacsql]
+path = "../emacsql"
+
 [dependencies]
-tokio = { version = "1.2", features = [ "rt", "macros", "fs", "test-util" ] }
-async-trait = "0.1.66"
 dotenvy = "0.15"
-sqlx = { version = "0.6.1", features = [ "runtime-tokio-rustls", "sqlite" ] }
+rusqlite = "0.29.0"
