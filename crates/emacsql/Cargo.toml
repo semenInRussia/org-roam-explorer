@@ -5,4 +5,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+lisp_parser = "0.1.3"
 rusqlite = "0.29.0"
+
+[[bin]]
+path = "src/main.rs"
+name = "main"

@@ -1,32 +1,45 @@
-use emacsql::prelude::*;
-use emacsql::query::QueryAs;
-use emacsql::row::{FromRow, Row};
-
+use emacsql::{Error, FromRow, QueryAs, Result, Row};
 use rusqlite::Connection;
 
-use std::env;
-
-struct Node {
+#[derive(Debug)]
+struct Repository {
     id: String,
-    title: String,
+    class: String,
+    forge: Option<String>,
+    forge_id: Option<String>,
+    sparse_p: Option<bool>,
+    stars: Option<usize>,
 }
 
-impl FromRow for Node {
+impl FromRow for Repository {
     fn try_from_row(row: &Row) -> Result<Self> {
-        let row = Self {
+        let rep = Self {
             id: row.get("id")?,
-            title: row.get("title")?,
+            class: row.get("class")?,
+            forge: row.get("forge")?,
+            forge_id: row.get("forge_id")?,
+            sparse_p: row.get("sparse_p")?,
+            stars: row.get("stars")?,
         };
-        Ok(row)
+        Ok(rep)
     }
 }
 
 fn main() {
-    let filename = env::var("ORG_ROAM_DB_FILE").unwrap();
+    let filename = "c:/Users/hrams/AppData/Roaming/.emacs.d/forge-database.sqlite";
     let conn = Connection::open(filename).unwrap();
-    let mut nodes_q = conn.prepare("SELECT * from NODES").unwrap();
-    let nodes: Vec<Node> = nodes_q.query_as([]).unwrap();
-    for n in nodes {
-        println!("- {}", n.title);
+    let mut repos_q = conn.prepare("SELECT * FROM repository").unwrap();
+    let repo: Result<Repository> = repos_q.query_as_one([]);
+
+    match repo {
+        Ok(repo) => {
+            println!("found! repo is {repo:#?}");
+        }
+        Err(Error::QueryReturnedNoRows) => {
+            println!("not found...:()");
+        }
+        Err(err) => {
+            println!("{err:?}");
+        }
     }
 }

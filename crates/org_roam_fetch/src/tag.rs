@@ -1,18 +1,17 @@
-use sqlx::{self, sqlite::SqliteRow, Row, SqlitePool};
+use emacsql::query::QueryAs;
 
 use crate::result::{Error, Result};
-
-use crate::utils::{add_quotes_around, remove_quotes_around};
+use rusqlite::Connection;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Tag {
     name: String,
 }
 
-impl<'a> sqlx::FromRow<'a, SqliteRow> for Tag {
-    fn from_row(row: &'a SqliteRow) -> std::result::Result<Self, sqlx::Error> {
-        let name: String = row.try_get("tag")?;
-        Ok(Tag::new(remove_quotes_around(&name)))
+impl<'a> emacsql::FromRow for Tag {
+    fn try_from_row(row: &emacsql::Row) -> emacsql::Result<Self> {
+        let name: String = row.get("tag")?;
+        Ok(Tag::new(name))
     }
 }
 
@@ -24,13 +23,11 @@ impl Tag {
         Tag { name: name.into() }
     }
 
-    pub async fn by_name(name: &str, pool: &SqlitePool) -> Result<Self> {
-        sqlx::query_as("SELECT tag FROM tags WHERE tag = $1")
-            .bind(add_quotes_around(name))
-            .fetch_one(pool)
-            .await
+    pub fn by_name(name: &str, conn: &mut Connection) -> Result<Self> {
+        conn.prepare("SELECT tag FROM tags WHERE tag = $1")?
+            .query_as_one([name])
             .map_err(|err| match err {
-                sqlx::error::Error::RowNotFound => Error::TagNotFound,
+                emacsql::Error::QueryReturnedNoRows => Error::TagNotFound,
                 _ => Error::DBError(err),
             })
     }
@@ -39,32 +36,27 @@ impl Tag {
         self.name.clone()
     }
 
-    pub async fn all_tags(pool: &SqlitePool) -> Result<Vec<Self>> {
-        sqlx::query_as("SELECT DISTINCT tag FROM tags")
-            .fetch_all(pool)
-            .await
+    pub fn all_tags(conn: &mut Connection) -> Result<Vec<Self>> {
+        conn.prepare("SELECT DISTINCT tag FROM tags")?
+            .query_as([])
             .map_err(Error::DBError)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::connection::default_db_pool;
+    use crate::connection::default_db_connection;
     use crate::{result::Error, tag::Tag};
 
-    #[tokio::test]
-    async fn test_tag_name() {
-        let pool = default_db_pool().await.expect("I can't open the pool");
-        let tag = Tag::by_name("physics", &pool)
-            .await
-            .expect("Error when fetch a tag");
+    fn test_tag_name() {
+        let mut conn = default_db_connection().unwrap();
+        let tag = Tag::by_name("physics", &mut conn).expect("Error when fetch a tag");
         assert_eq!(tag.name(), "physics");
     }
 
-    #[tokio::test]
-    async fn test_tag_not_found() {
-        let pool = default_db_pool().await.expect("I can't open the pool");
-        let err = Tag::by_name("stupid id that can't be in db", &pool).await;
+    fn test_tag_not_found() {
+        let mut conn = default_db_connection().expect("I can't open the pool");
+        let err = Tag::by_name("stupid id that can't be in db", &mut conn);
         assert!(matches!(err, Err(Error::TagNotFound)));
     }
 }

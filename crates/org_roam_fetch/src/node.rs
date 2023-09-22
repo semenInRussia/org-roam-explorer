@@ -1,11 +1,11 @@
-use tokio::fs::File;
+use emacsql::QueryAs;
 
-use sqlx::{self, sqlite::SqliteRow, Row, SqlitePool};
+use rusqlite::Connection;
+use std::fs::File;
 
 use crate::id::ID;
 use crate::result::{Error, Result};
 use crate::tag::Tag;
-use crate::utils::{add_quotes_around, remove_quotes_around};
 
 // NOTE: I am not use columns from the table Node which for me useless
 #[derive(Debug, Clone)]
@@ -20,21 +20,12 @@ pub struct Node {
     tags: Option<Vec<Tag>>,
 }
 
-impl<'a> sqlx::FromRow<'a, SqliteRow> for Node {
-    fn from_row(row: &'a SqliteRow) -> std::result::Result<Self, sqlx::Error> {
+impl emacsql::FromRow for Node {
+    fn try_from_row(row: &emacsql::Row) -> emacsql::Result<Self> {
         let node = Self {
-            id: row
-                .try_get("id")
-                .map(|ref s| remove_quotes_around(s).to_string())
-                .ok(),
-            title: row
-                .try_get("title")
-                .map(|ref s| remove_quotes_around(s).to_string())
-                .ok(),
-            filename: row
-                .try_get("file")
-                .map(|ref s| remove_quotes_around(s).to_string())
-                .ok(),
+            id: row.get("id").ok(),
+            title: row.get("title").ok(),
+            filename: row.get("file").ok(),
             tags: None,
         };
         Ok(node)
@@ -43,22 +34,18 @@ impl<'a> sqlx::FromRow<'a, SqliteRow> for Node {
 
 impl Node {
     /// create a `Node` instance that referes to the `org-roam` node with a given ID
-    pub async fn by_id(id: ID, pool: &SqlitePool) -> Result<Self> {
-        let q = r#"
-SELECT id, title, file from nodes
-where nodes.id = $1"#;
-        sqlx::query_as(q)
-            .bind(add_quotes_around(id))
-            .fetch_one(pool)
-            .await
+    pub fn by_id(id: ID, conn: &mut Connection) -> Result<Self> {
+        let q = r#"SELECT id, title, file from nodes where nodes.id = $1"#;
+        conn.prepare(q)?
+            .query_as_one([id])
             .map_err(|err| match err {
-                sqlx::error::Error::RowNotFound => Error::NodeNotFound,
+                emacsql::Error::QueryReturnedNoRows => Error::NodeNotFound,
                 _ => Error::DBError(err),
             })
     }
 
     /// creat e `Node` instance that referes to the `org-roam` node with a given name
-    pub async fn by_title<T>(title: T, pool: &SqlitePool) -> Result<Self>
+    pub fn by_title<T>(title: T, conn: &mut Connection) -> Result<Self>
     where
         T: Into<String>,
     {
@@ -69,20 +56,15 @@ WHERE nodes.title = '"{}"'
 "#,
             title.into()
         );
-        sqlx::query_as(&q)
-            .fetch_one(pool)
-            .await
-            .map_err(|err| match err {
-                sqlx::error::Error::RowNotFound => Error::NodeNotFound,
-                _ => Error::DBError(err),
-            })
+        conn.prepare(&q)?.query_as_one([]).map_err(|err| match err {
+            emacsql::Error::QueryReturnedNoRows => Error::NodeNotFound,
+            _ => Error::DBError(err),
+        })
     }
 
     /// return the opened file in which stored a node
-    pub async fn file(&self) -> Result<File> {
-        File::open(self.filename()?)
-            .await
-            .map_err(Error::NodeFileOpenError)
+    pub fn file(&self) -> Result<File> {
+        File::open(self.filename()?).map_err(Error::NodeFileOpenError)
     }
 
     /// return the path to the file in which stored a node
@@ -98,20 +80,13 @@ WHERE nodes.title = '"{}"'
     /// returns the vector of tags of a node in `Result` container.
     ///
     /// if the tags didn't fetched, returns `result::Error`
-    pub async fn tags(&self, pool: &SqlitePool) -> Result<Vec<Tag>> {
+    pub fn tags(&self, conn: &mut Connection) -> Result<Vec<Tag>> {
         if let Some(tgs) = &self.tags {
             return Ok(tgs.to_owned());
         }
-        let id = self
-            .id
-            .as_ref()
-            .map(add_quotes_around)
-            .ok_or(Error::TagNotFound)?;
+        let id = self.id.as_ref().ok_or(Error::TagNotFound)?;
         let q = format!("SELECT tag FROM tags WHERE node_id = '{id}'");
-        sqlx::query_as(&q)
-            .fetch_all(pool)
-            .await
-            .map_err(Error::DBError)
+        conn.prepare(&q)?.query_as([]).map_err(Error::DBError)
     }
 
     /// return the ID of a node which consists of 5 parts separated with dash.
@@ -138,29 +113,24 @@ WHERE nodes.title = '"{}"'
     /// return all nodes that exists in the database.
     ///
     /// use limit and offset to concretize amount of expected nodes.
-    pub async fn all_nodes(limit: usize, offset: usize, pool: &SqlitePool) -> Result<Vec<Node>> {
-        sqlx::query_as("SELECT file, title, id FROM nodes LIMIT $1 OFFSET $2")
-            .bind(limit as u32)
-            .bind(offset as u32)
-            .fetch_all(pool)
-            .await
+    pub fn all_nodes(limit: usize, offset: usize, conn: &mut Connection) -> Result<Vec<Node>> {
+        conn.prepare("SELECT file, title, id FROM nodes LIMIT $1 OFFSET $2")?
+            .query_as([limit, offset])
             .map_err(Error::DBError)
     }
 
     /// return all nodes, that have a given tag.
-    pub async fn nodes_of_tag(tag: Tag, pool: &SqlitePool) -> Result<Vec<Node>> {
+    pub fn nodes_of_tag(tag: Tag, conn: &mut Connection) -> Result<Vec<Node>> {
         let q = r#"
 SELECT file, title, id
 FROM nodes
 WHERE id in (SELECT node_id FROM tags WHERE tag = $1)"#;
-        sqlx::query_as(q)
-            .bind(add_quotes_around(tag.name()))
-            .fetch_all(pool)
-            .await
+        conn.prepare(q)?
+            .query_as([tag.name()])
             .map_err(Error::DBError)
     }
 
-    pub async fn refers_to(&self, pool: &SqlitePool) -> Result<Vec<Node>> {
+    pub fn refers_to(&self, conn: &Connection) -> Result<Vec<Node>> {
         let id = self.id.as_ref().ok_or(Error::NodeIdNotFetched)?;
         let q = format!(
             r#"
@@ -172,14 +142,11 @@ WHERE l.source = '"{}"'
 "#,
             &id
         );
-        sqlx::query_as(&q)
-            .fetch_all(pool)
-            .await
-            .map_err(Error::DBError)
+        conn.prepare(&q)?.query_as([]).map_err(Error::DBError)
     }
 
     /// returns the vector of nodes that refers to the current node
-    pub async fn backlinks(&self, pool: &SqlitePool) -> Result<Vec<Node>> {
+    pub fn backlinks(&self, conn: &mut Connection) -> Result<Vec<Node>> {
         let id = self.id.as_ref().ok_or(Error::NodeIdNotFetched)?;
         let q = format!(
             r#"
@@ -191,61 +158,51 @@ WHERE l.dest = '"{}"'
 "#,
             &id
         );
-        sqlx::query_as(&q)
-            .fetch_all(pool)
-            .await
-            .map_err(Error::DBError)
+        conn.prepare(&q)?.query_as([]).map_err(Error::DBError)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::connection::default_db_pool;
+    use crate::connection::default_db_connection;
     use crate::node::Node;
 
-    #[tokio::test]
-    async fn test_node_title() {
-        let pool = default_db_pool().await.expect("I can't open the pool");
-        let node = Node::by_id("1".to_string(), &pool)
-            .await
-            .expect("Node with available id not found");
+    #[test]
+    fn test_node_title() {
+        let mut conn = default_db_connection().expect("I can't open a connection");
+        let node =
+            Node::by_id("1".to_string(), &mut conn).expect("Node with available id not found");
         assert_eq!(node.title().unwrap(), "momentum");
     }
 
-    #[tokio::test]
-    async fn test_node_filename() {
-        let pool = default_db_pool().await.expect("I can't open the pool");
-        let node = Node::by_id("1".into(), &pool)
-            .await
-            .expect("Node with available id not found");
+    #[test]
+    fn test_node_filename() {
+        let mut conn = default_db_connection().expect("I can't open the connection");
+        let node = Node::by_id("1".into(), &mut conn).expect("Node with available id not found");
         assert_eq!(node.filename().unwrap(), "org-roam/momentum.org");
     }
 
-    #[tokio::test]
-    async fn test_node_tags() {
+    #[test]
+    fn test_node_tags() {
         use crate::tag::Tag;
-        let pool = default_db_pool().await.expect("I can't open the pool");
-        let node = Node::by_id("1".into(), &pool)
-            .await
-            .expect("Error when fetch a node");
-        assert_eq!(node.tags(&pool).await.unwrap(), vec![Tag::new("physics")]);
+        let mut conn = default_db_connection().expect("I can't open the conn");
+        let node = Node::by_id("1".into(), &mut conn).expect("Error when fetch a node");
+        assert_eq!(node.tags(&mut conn).unwrap(), vec![Tag::new("physics")]);
     }
 
-    #[tokio::test]
-    async fn test_node_not_found() {
-        let pool = default_db_pool().await.expect("I can't open the pool");
-        let err = Node::by_id("undefined id".into(), &pool).await;
+    #[test]
+    fn test_node_not_found() {
+        let mut conn = default_db_connection().expect("I can't open the conn");
+        let err = Node::by_id("undefined id".into(), &mut conn);
         assert!(matches!(err, Err(crate::result::Error::NodeNotFound)));
     }
 
-    #[tokio::test]
-    async fn test_all_nodes() {
+    #[test]
+    fn test_all_nodes() {
         use crate::tag::Tag;
 
-        let pool = default_db_pool().await.expect("I can't open the pool");
-        let nodes = Node::all_nodes(128, 0, &pool)
-            .await
-            .expect("Error when fetch all nodes");
+        let mut conn = default_db_connection().expect("I can't open the conn");
+        let nodes = Node::all_nodes(128, 0, &mut conn).expect("Error when fetch all nodes");
         assert_eq!(nodes.len(), 5);
         let titles: Vec<String> = nodes.iter().map(Node::title).map(Result::unwrap).collect();
         assert_eq!(
@@ -256,19 +213,17 @@ mod tests {
 
         assert_eq!(
             momentum
-                .tags(&pool)
-                .await
+                .tags(&mut conn)
                 .expect("error when fetch node tags"),
             vec![Tag::new("physics")]
         );
     }
 
-    #[tokio::test]
-    async fn test_all_nodes_with_offset_and_limit() {
-        let pool = default_db_pool().await.expect("I can't open the pool");
-        let second_nodes = Node::all_nodes(1, 1, &pool)
-            .await
-            .expect("Error when fetch 1 node after first");
+    #[test]
+    fn test_all_nodes_with_offset_and_limit() {
+        let mut conn = default_db_connection().expect("I can't open the connection");
+        let second_nodes =
+            Node::all_nodes(1, 1, &mut conn).expect("Error when fetch 1 node after first");
         assert_eq!(second_nodes.len(), 1);
         let node = second_nodes
             .iter()
@@ -277,36 +232,32 @@ mod tests {
         assert_eq!(node.title().unwrap(), "mass");
     }
 
-    #[tokio::test]
-    async fn test_nodes_of_tag() {
+    #[test]
+    fn test_nodes_of_tag() {
         use crate::tag::Tag;
-        let pool = default_db_pool().await.expect("I can't open the pool");
-        let tag = Tag::by_name("person", &pool)
-            .await
-            .expect("Error when fetch a tag");
-        let nodes = Node::nodes_of_tag(tag, &pool)
-            .await
-            .expect("Error when fetch nodes of a tag");
+        let mut conn = default_db_connection().expect("I can't open the connection");
+        let tag = Tag::by_name("person", &mut conn).expect("Error when fetch a tag");
+        let nodes = Node::nodes_of_tag(tag, &mut conn).expect("Error when fetch nodes of a tag");
         assert_eq!(nodes.len(), 1);
         let nodes_titles: Vec<String> = nodes.iter().map(Node::title).map(Result::unwrap).collect();
         assert_eq!(nodes_titles, vec!["newton"]);
     }
 
-    #[tokio::test]
-    async fn test_node_refers_to() {
-        let pool = default_db_pool().await.expect("I can't open the pool");
-        let newton = Node::by_id("5".to_string(), &pool).await.unwrap();
-        let childs = newton.refers_to(&pool).await.unwrap();
+    #[test]
+    fn test_node_refers_to() {
+        let mut conn = default_db_connection().expect("I can't open the conn");
+        let newton = Node::by_id("5".to_string(), &mut conn).unwrap();
+        let childs = newton.refers_to(&mut conn).unwrap();
         let childs_names: Vec<String> =
             childs.iter().map(Node::title).map(Result::unwrap).collect();
         assert_eq!(childs_names, ["Second Law of Newton"]);
     }
 
-    #[tokio::test]
-    async fn test_node_backlinks() {
-        let pool = default_db_pool().await.expect("I can't open the pool");
-        let newton = Node::by_id("5".to_string(), &pool).await.unwrap();
-        let parents = newton.backlinks(&pool).await.unwrap();
+    #[test]
+    fn test_node_backlinks() {
+        let mut conn = default_db_connection().expect("I can't open the conn");
+        let newton = Node::by_id("5".to_string(), &mut conn).unwrap();
+        let parents = newton.backlinks(&mut conn).unwrap();
         let parents_names: Vec<String> = parents
             .iter()
             .map(Node::title)
@@ -315,10 +266,10 @@ mod tests {
         assert_eq!(parents_names, ["Second Law of Newton"]);
     }
 
-    #[tokio::test]
-    async fn test_node_by_title() {
-        let pool = default_db_pool().await.expect("I can't open the pool");
-        let si = Node::by_title("si", &pool).await.expect("I don't see SI");
+    #[test]
+    fn test_node_by_title() {
+        let mut conn = default_db_connection().expect("I can't open the conn");
+        let si = Node::by_title("si", &mut conn).expect("I don't see SI");
         assert_eq!(si.id().unwrap(), "3");
     }
 }

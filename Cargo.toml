@@ -12,9 +12,11 @@ name = "oroam-tags"
 path = "./crates/bin/nodes_by_title.rs"
 name = "oroam-nodes"
 
+[dependencies.emacsql]
+path = "crates/emacsql"
+
 [dependencies.org_roam_fetch]
 path = "crates/org_roam_fetch"
 
 [dependencies]
-tokio = { version = "1.2", features = [ "rt", "macros", "fs", "test-util" ] }
 inquire = "0.6.2"
