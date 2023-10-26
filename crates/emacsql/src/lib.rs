@@ -1,5 +1,3 @@
-#![feature(try_trait_v2, associated_type_defaults)]
-
 extern crate rusqlite;
 pub mod error;
 pub mod lisp;
