@@ -7,7 +7,7 @@ fn main() {
     let names: Vec<String> = Node::all_nodes(1024, 0, &mut conn)
         .expect("Couldn't fetch all nodes to do auto complete")
         .iter()
-        .map(|n| n.title().expect("given a node without title"))
+        .filter_map(|n| n.title().ok())
         .collect();
 
     let node_title = Select::new("Choose the name of a node -> ", names.clone())
@@ -19,14 +19,19 @@ fn main() {
         .refers_to(&mut conn)
         .expect("couldn't find ndoes which refers to a given node");
 
-    println!("> Links on this node");
+    println!("> Links inside this node");
 
     if childs.is_empty() {
         println!("  these nodes didn't found");
     }
 
     for ch in childs {
-        let tags: Vec<String> = ch.tags(&mut conn).unwrap().iter().map(Tag::name).collect();
+        let tags: Vec<String> = ch
+            .tags(&mut conn)
+            .unwrap_or(vec![])
+            .iter()
+            .map(Tag::name)
+            .collect();
         println!(
             "  - {title} [{tags}]",
             title = ch.title().unwrap(),
@@ -43,7 +48,12 @@ fn main() {
     }
 
     for b in backlinks {
-        let tags: Vec<String> = b.tags(&mut conn).unwrap().iter().map(Tag::name).collect();
+        let tags: Vec<String> = b
+            .tags(&mut conn)
+            .unwrap_or(vec![])
+            .iter()
+            .map(Tag::name)
+            .collect();
         println!(
             "  - {title} [{tags}]",
             title = b.title().unwrap(),

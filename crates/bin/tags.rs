@@ -4,7 +4,8 @@ use org_roam_fetch::{connection::default_db_connection, node::Node, result::Erro
 extern crate org_roam_fetch;
 
 fn main() {
-    let mut conn = default_db_connection().expect("Sory.  can't an open DataBase pool");
+    let mut conn = default_db_connection().expect("Sory.  can't open the DataBase pool");
+
     let tags: Vec<String> = Tag::all_tags(&mut conn)
         .expect("Can't explore all tags to do hint")
         .iter()
@@ -24,7 +25,7 @@ fn main() {
 
     let tag = tag.expect("Can't found your tag, internal error");
 
-    println!("> Nodes of your tag with name \"{}\":", &tag.name());
+    println!("> Nodes with the tag \"{}\":", &tag.name());
 
     let nodes = Node::nodes_of_tag(tag, &mut conn).expect("I didn't find nodes of your tag?");
 
