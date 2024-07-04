@@ -26,9 +26,12 @@ impl Tag {
     pub fn by_name(name: &str, conn: &mut Connection) -> Result<Self> {
         conn.prepare("SELECT tag FROM tags WHERE tag = $1")?
             .query_as_one([name])
-            .map_err(|err| match err {
-                emacsql::Error::QueryReturnedNoRows => Error::TagNotFound,
-                _ => Error::DBError(err),
+            .map_err(|err| {
+                if let emacsql::Error::QueryReturnedNoRows = err {
+                    Error::TagNotFound
+                } else {
+                    Error::DBError(err)
+                }
             })
     }
 
@@ -48,12 +51,14 @@ mod tests {
     use crate::connection::default_db_connection;
     use crate::{result::Error, tag::Tag};
 
+    #[test]
     fn test_tag_name() {
         let mut conn = default_db_connection().unwrap();
         let tag = Tag::by_name("physics", &mut conn).expect("Error when fetch a tag");
         assert_eq!(tag.name(), "physics");
     }
 
+    #[test]
     fn test_tag_not_found() {
         let mut conn = default_db_connection().expect("I can't open the pool");
         let err = Tag::by_name("stupid id that can't be in db", &mut conn);

@@ -1,5 +1,6 @@
 /// if a given string wrapped with double quotes, remove them, otherwise just
 /// return the given string
+#[allow(dead_code)]
 pub fn maybe_remove_quotes_around<'a, I, O>(s: I) -> O
 where
     I: Into<String>,
@@ -17,6 +18,7 @@ where
 }
 
 // notice that you should ensure that `s` is wrapped with quoutes
+#[allow(dead_code)]
 pub fn remove_quotes_around<'a, I, O>(s: I) -> O
 where
     I: Into<String>,
@@ -28,6 +30,7 @@ where
     s.into()
 }
 
+#[allow(dead_code)]
 pub fn add_quotes_around<T>(s: T) -> String
 where
     T: Into<String>,

@@ -78,7 +78,6 @@ checksum = "68b0cf012f1230e43cd00ebb729c6bb58707ecfa8ad08b52ef3a4ccd2697fc30"
 name = "emacsql"
 version = "0.1.0"
 dependencies = [
- "lisp_parser",
  "rusqlite",
 ]
 
@@ -149,12 +148,6 @@ dependencies = [
  "pkg-config",
  "vcpkg",
 ]
-
-[[package]]
-name = "lisp_parser"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdfaf946f4a3ec394f4492b2208dcaccf0a5f17d256b504795be32958efd4697"
 
 [[package]]
 name = "lock_api"

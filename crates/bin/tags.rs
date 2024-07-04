@@ -4,7 +4,7 @@ use org_roam_fetch::{connection::default_db_connection, node::Node, result::Erro
 extern crate org_roam_fetch;
 
 fn main() {
-    let mut conn = default_db_connection().expect("Sory.  can't open the DataBase pool");
+    let mut conn = default_db_connection().expect("Sorry.  can't open the DataBase pool");
 
     let tags: Vec<String> = Tag::all_tags(&mut conn)
         .expect("Can't explore all tags to do hint")
@@ -14,6 +14,7 @@ fn main() {
     let tag_name = Select::new("Choose a tag, pls: ", tags.clone())
         .prompt()
         .expect("You didn't choose a tag?");
+
     let mut tag = Tag::by_name(tag_name.trim(), &mut conn);
 
     while let Err(Error::TagNotFound) = tag {

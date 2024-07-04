@@ -35,7 +35,7 @@ impl emacsql::FromRow for Node {
 impl Node {
     /// create a `Node` instance that referes to the `org-roam` node with a given ID
     pub fn by_id(id: ID, conn: &mut Connection) -> Result<Self> {
-        let q = r#"SELECT id, title, file from nodes where nodes.id = $1"#;
+        let q = r#"SELECT id, title, file FROM nodes WHERE nodes.id = "$1""#;
         conn.prepare(q)?
             .query_as_one([id])
             .map_err(|err| match err {

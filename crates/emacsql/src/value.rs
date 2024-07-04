@@ -41,7 +41,7 @@ impl FromSql for Value {
             // Emacs lisp or Null that represents nil
             Real(n) => Ok(Self::Real(n)),
             Integer(n) => Ok(Self::Integer(n)),
-            Blob(_) => unreachable!("Blob can be represented in EmacSQL database"),
+            Blob(_) => unreachable!("Blob cannot be represented in EmacSQL database"),
         }
     }
 }

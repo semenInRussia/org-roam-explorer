@@ -16,8 +16,6 @@ impl Value {
     fn text(self) -> Option<String> {
         match self {
             Self::Symbol(s) | Self::String(s) => Some(s),
-            // Self::Symbol(s) => Some(s),
-            // Self::String(s) => Some(s),
             _ => None,
         }
     }
@@ -117,6 +115,7 @@ impl Into<Result<Value>> for Event {
 }
 
 impl Event {
+    #[allow(dead_code)]
     fn parsed(self) -> Option<Value> {
         use Event::*;
 
@@ -143,6 +142,7 @@ impl ListType {
     }
 
     /// Returns the opening parenthesis of this [`ListType`].
+    #[allow(dead_code)]
     fn open(&self) -> char {
         match self {
             Self::List => '(',
@@ -194,6 +194,7 @@ impl<'a> Parser<'a> {
 
         let ch = self.ch().unwrap();
 
+        use Event::*;
         match ch {
             ch if ch.is_whitespace() => {
                 self.chop_spaces();
@@ -202,8 +203,8 @@ impl<'a> Parser<'a> {
             ch if ch.is_numeric() || ch == '-' => return self.parse_numeric_or_symbol().into(),
             '"' => return self.parse_string().into(),
             '[' | '(' => return self.parse_list_or_cons().into(),
-            '.' => return Event::ErrorHappened(Error::UnexpectedDot),
-            ')' | ']' => return Event::ErrorHappened(Error::UnbalancedExpr),
+            '.' => return ErrorHappened(Error::UnexpectedDot),
+            ')' | ']' => return ErrorHappened(Error::UnbalancedExpr),
             _ => return self.parse_symbol().into(),
         }
     }
@@ -213,7 +214,7 @@ impl<'a> Parser<'a> {
     }
 
     fn chop_word(&mut self) -> String {
-        self.take_while(|c| c != ' ' && c != ')' && c != ']')
+        self.take_while(|c| c != ' ' && c != ')' && c != ']' && c != '\n')
     }
 
     const fn is_not_empty(&self) -> bool {
@@ -249,9 +250,9 @@ impl<'a> Parser<'a> {
 
     fn parse_list_or_cons(&mut self) -> Result<Value> {
         let op = self.ch().ok_or(Error::UnbalancedExpr)?;
+        self.chop(1);
         let kind = ListType::from_open(op).unwrap();
         let cl = kind.close();
-        self.chop(1);
 
         let mut lst: Vec<Value> = Vec::new();
 
@@ -283,6 +284,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_symbol(&mut self) -> Result<Value> {
+        assert!(self.ch().is_some() && is_identifier_char(self.ch().unwrap()));
         let name = self.take_while(is_identifier_char);
         Ok(Value::Symbol(name))
     }
@@ -316,7 +318,6 @@ impl<'a> Parser<'a> {
     fn parse_numeric(&mut self) -> Result<Value> {
         let w = self.chop_word();
         if w.contains('.') {
-            self.progress();
             return w.parse().map(Value::Real).map_err(|_| Error::InvalidNumber);
         }
         w.parse()
@@ -351,6 +352,7 @@ impl<'a> Parser<'a> {
         String::from_utf8(self.src[beg..end].to_vec()).unwrap()
     }
 
+    #[allow(dead_code)]
     fn progress(&self) {
         println!("{}", String::from_utf8(self.src.to_vec()).unwrap());
         for _ in 0..self.cursor {
@@ -381,6 +383,7 @@ fn escape_char(ch: char) -> char {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 
